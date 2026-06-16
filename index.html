@@ -358,7 +358,12 @@ function tempAt(r, ax){
 // ============================================================
 let renderer, scene, camera, controls, grid, mesh, geo, colorAttr;
 let vR=[], vX=[];          // 各頂点の (半径, 軸位置)
-let windGroup, windArrows=[];
+let windGroup;             // 送風（流体的な流れ）表示グループ
+let flow = null;           // 流れの状態 {mesh, lines, label, streams, pSL, pU, perSL}
+const _UP = new THREE.Vector3(0,1,0);
+const _v0 = new THREE.Vector3(), _dir = new THREE.Vector3();
+const _obj = new THREE.Object3D(), _col = new THREE.Color();
+const FLOW_BASE = new THREE.Color(0x8fe3ff);
 let sectionCut = false;    // 既定はフル円筒（切り欠きなし）
 const A_GAP = 70, A_START = 80*DEG;  // 断面表示時の切り欠き
 
@@ -441,26 +446,106 @@ function makeTextSprite(txt){
   return sp;
 }
 
+// 送風の流れ（流線）を生成。風は -X から来て、片側フラット面(X=-W/2)へ。
+//  ①巻芯(内周)を通り抜け ②外周を通り抜け ③端面で内へ曲がり巻芯へ ④端面で外へ曲がり外周へ
 function buildWind(){
-  if(windGroup) scene.remove(windGroup);
-  windGroup=new THREE.Group(); windArrows=[];
-  const len=Math.min(0.55, Math.max(0.2, P.W*0.35));
-  const startX=-P.W/2 - len - 0.10;
-  const rings=[rIn+(rOut-rIn)*0.18, rIn+(rOut-rIn)*0.5, rIn+(rOut-rIn)*0.85];
-  const nA=8, dir=new THREE.Vector3(1,0,0);
-  let k=0;
-  for(const rr of rings) for(let a=0;a<nA;a++){
-    const th=(a/nA)*Math.PI*2 + rr*2.7;
-    const y=rr*Math.cos(th), z=rr*Math.sin(th);
-    const arr=new THREE.ArrowHelper(dir, new THREE.Vector3(startX,y,z), len, 0x7fd4ff, len*0.38, len*0.24);
-    arr.userData={baseX:startX, phase:(k*0.37)%1};
-    windGroup.add(arr); windArrows.push(arr); k++;
+  if(windGroup){
+    scene.remove(windGroup);
+    if(flow){
+      flow.mesh.geometry.dispose(); flow.mesh.material.dispose();
+      flow.lines.geometry.dispose(); flow.lines.material.dispose();
+      if(flow.label){ if(flow.label.material.map) flow.label.material.map.dispose(); flow.label.material.dispose(); }
+    }
   }
-  const lab=makeTextSprite('送風 ▶');
-  const s=Math.max(0.7, rOut*0.9); lab.scale.set(s, s*0.4, 1);
-  lab.position.set(startX-0.15, rOut+0.28, 0);
-  windGroup.add(lab);
+  windGroup=new THREE.Group();
+
+  const W=P.W, hw=W/2;
+  const c=Math.max(0.02, rOut*0.02);
+  const La=Math.max(0.45, W*0.45), Le=La;
+  const xUp=-hw-La, xPre=-hw-0.16, xFront=-hw-c, xDown=hw+Le;
+  const rStag=rIn+(rOut-rIn)*0.5;                 // よどみ半径（内へ/外へ の分岐）
+  const rBore=Math.max(0.02, rIn*0.85);           // 巻芯を通る半径
+  const rOuter=rOut+Math.max(0.03, rOut*0.03);    // 外周を通る半径
+  const SAMPLES=60;
+
+  // (x,ρ) 制御点を角度θで3D化し CatmullRom 曲線へ → 等間隔サンプル
+  function makeStream(ctrl2d, th){
+    const cps=ctrl2d.map(([x,r])=> new THREE.Vector3(x, r*Math.cos(th), r*Math.sin(th)));
+    const curve=new THREE.CatmullRomCurve3(cps, false, 'catmullrom', 0.5);
+    return { pts: curve.getSpacedPoints(SAMPLES), len: Math.max(1e-3, curve.getLength()) };
+  }
+
+  const streams=[];
+  const nAng=6;
+  for(let a=0;a<nAng;a++){
+    const th=a*2*Math.PI/nAng;
+    // ① 巻芯(内周)を通り抜ける
+    for(const r0 of [rIn*0.45, rIn*0.8])
+      streams.push(makeStream([[xUp,r0],[xPre,r0],[-hw,r0],[hw,r0],[xDown,r0]], th+0.05));
+    // ② 外周を通り抜ける（肩で少し膨らむ）
+    for(const r0 of [rOut*1.05, rOut*1.14])
+      streams.push(makeStream([[xUp,r0],[xPre,r0],[-hw,r0+0.03],[0,r0+0.015],[hw,r0+0.02],[xDown,r0]], th+0.5));
+    // ③ 端面に当たり内へ曲がって巻芯へ
+    for(const r0 of [rIn+(rStag-rIn)*0.4, rIn+(rStag-rIn)*0.8])
+      streams.push(makeStream([[xUp,r0],[xPre,r0],[xFront,r0],[xFront,(r0+rIn)/2],[xFront,rIn],
+                               [-hw+0.03,rBore],[0,rBore],[hw,rBore],[xDown,rBore]], th+0.27));
+    // ④ 端面に当たり外へ曲がって外周へ
+    for(const r0 of [rStag+(rOut-rStag)*0.25, rStag+(rOut-rStag)*0.65])
+      streams.push(makeStream([[xUp,r0],[xPre,r0],[xFront,r0],[xFront,(r0+rOut)/2],[xFront,rOut],
+                               [-hw+0.03,rOuter],[0,rOuter],[hw,rOuter],[xDown,rOuter]], th+0.8));
+  }
+
+  // 流線ガイド（淡色のライン）
+  const lp=[];
+  for(const s of streams) for(let i=0;i<s.pts.length-1;i++){ const p=s.pts[i],q=s.pts[i+1]; lp.push(p.x,p.y,p.z,q.x,q.y,q.z); }
+  const lgeo=new THREE.BufferGeometry(); lgeo.setAttribute('position', new THREE.Float32BufferAttribute(lp,3));
+  const lines=new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({color:0x4aa8d8, transparent:true, opacity:0.10, depthWrite:false}));
+  windGroup.add(lines);
+
+  // 流れる粒子（細い円錐＝先端が小さい矢じり）InstancedMesh
+  const size=Math.min(0.14, Math.max(0.05, rOut*0.11));
+  const cone=new THREE.ConeGeometry(size*0.16, size, 6);   // 半径を細く＝先端を小さく
+  cone.translate(0, -size*0.2, 0);
+  const pmat=new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
+  const perSL=3, total=streams.length*perSL;
+  const mesh=new THREE.InstancedMesh(cone, pmat, total);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const pSL=new Int16Array(total), pU=new Float32Array(total);
+  let k=0;
+  for(let s=0;s<streams.length;s++) for(let p=0;p<perSL;p++){ pSL[k]=s; pU[k]=((p/perSL)+(s*0.13))%1; k++; }
+  windGroup.add(mesh);
+
+  // ラベル
+  const lab=makeTextSprite('送風 ▶'); const ls=Math.max(0.7, rOut*0.9); lab.scale.set(ls, ls*0.4, 1);
+  lab.position.set(xUp+0.1, rOut+0.28, 0); windGroup.add(lab);
+
+  flow={ mesh, lines, label:lab, streams, pSL, pU, perSL };
   scene.add(windGroup);
+  updateFlow(0);
+}
+
+function smooth(a,b,x){ let t=(x-a)/(b-a); t=t<0?0:t>1?1:t; return t*t*(3-2*t); }
+function updateFlow(dt){
+  if(!flow) return;
+  const flowSpeed=0.6 + 0.7*Math.min(1, P.h/300);   // 風が強いほど速く流れる
+  const {mesh, streams, pSL, pU, perSL}=flow;
+  const total=streams.length*perSL;
+  for(let i=0;i<total;i++){
+    const s=streams[pSL[i]], pts=s.pts;
+    let u=pU[i] + dt*flowSpeed/s.len; u-=Math.floor(u); pU[i]=u;
+    const f=u*(pts.length-1); let ia=Math.floor(f); if(ia>=pts.length-1) ia=pts.length-2;
+    const pa=pts[ia], pb=pts[ia+1], fr=f-ia;
+    _v0.lerpVectors(pa,pb,fr);
+    _dir.subVectors(pb,pa);
+    if(_dir.lengthSq()<1e-12) _dir.set(1,0,0); else _dir.normalize();
+    _obj.position.copy(_v0); _obj.quaternion.setFromUnitVectors(_UP,_dir); _obj.scale.set(1,1,1); _obj.updateMatrix();
+    mesh.setMatrixAt(i, _obj.matrix);
+    const ff=smooth(0,0.08,u)*(1-smooth(0.9,1,u));   // 始端・終端でフェード
+    _col.copy(FLOW_BASE).multiplyScalar(0.1+0.9*ff);
+    mesh.setColorAt(i, _col);
+  }
+  mesh.instanceMatrix.needsUpdate=true;
+  if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
 }
 
 function buildModel(resetTemps){
@@ -636,9 +721,8 @@ function animate(){
     advance(P.speed*realDt); sample();
     if(coreTemp()-P.ambT<0.5){ settled=true; setPlay(false); }
   }
-  // 送風アロー（流れ表現）
-  const tw=performance.now()/1000;
-  for(const a of windArrows){ const off=((tw*0.5+a.userData.phase)%1)*0.28; a.position.x=a.userData.baseX+off; }
+  // 送風（流体的な流れ）アニメーション
+  updateFlow(realDt);
 
   recolor(); controls.update(); renderer.render(scene,camera);
   const now=performance.now();
