@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>アルミニウムコイル 冷却シミュレータ（3D）</title>
+<title>アルミニウムコイル 冷却シミュレータ（3D・横置き片側送風）</title>
 <style>
   :root{
     --bg:#0b0e14; --panel:rgba(18,22,32,.82); --panel-bd:rgba(120,140,180,.18);
@@ -20,81 +20,54 @@
     border-radius:14px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     box-shadow:0 8px 30px rgba(0,0,0,.45);}
 
-  /* Title */
-  #title{top:14px;left:50%;transform:translateX(-50%);padding:8px 16px;text-align:center;
-    pointer-events:none}
+  #title{top:14px;left:50%;transform:translateX(-50%);padding:8px 16px;text-align:center;pointer-events:none}
   #title h1{margin:0;font-size:15px;letter-spacing:.02em}
   #title p{margin:2px 0 0;font-size:11px;color:var(--muted)}
 
-  /* Controls (left) */
-  #controls{top:14px;left:14px;width:288px;max-height:calc(100vh - 28px);
-    overflow-y:auto;padding:14px 14px 16px}
-  #controls h2{font-size:12px;margin:2px 0 10px;color:var(--accent);
-    text-transform:uppercase;letter-spacing:.08em}
+  #controls{top:14px;left:14px;width:288px;max-height:calc(100vh - 28px);overflow-y:auto;padding:14px 14px 16px}
+  #controls h2{font-size:12px;margin:2px 0 10px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
   .row{margin:11px 0}
   .row label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px}
   .row label b{color:var(--fg);font-weight:600}
-  input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;
-    background:#28324a;border-radius:3px;outline:none}
+  input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;background:#28324a;border-radius:3px;outline:none}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
     background:var(--accent);cursor:pointer;border:2px solid #0b0e14;box-shadow:0 0 0 1px var(--accent)}
-  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);
-    cursor:pointer;border:2px solid #0b0e14}
-  select{width:100%;background:#1a2233;color:var(--fg);border:1px solid var(--panel-bd);
-    border-radius:8px;padding:7px 8px;font-size:12px;outline:none}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0e14}
+  select{width:100%;background:#1a2233;color:var(--fg);border:1px solid var(--panel-bd);border-radius:8px;padding:7px 8px;font-size:12px;outline:none}
   .btns{display:flex;gap:8px;margin:4px 0 12px}
-  button{flex:1;background:#1c2740;color:var(--fg);border:1px solid var(--panel-bd);
-    border-radius:9px;padding:9px 8px;font-size:13px;cursor:pointer;transition:.12s;font-weight:600}
+  button{flex:1;background:#1c2740;color:var(--fg);border:1px solid var(--panel-bd);border-radius:9px;padding:9px 8px;font-size:13px;cursor:pointer;transition:.12s;font-weight:600}
   button:hover{background:#26345a;border-color:var(--accent)}
   button.primary{background:linear-gradient(180deg,#2f6fd6,#2356b0);border-color:#3d7fe0}
   button.primary:hover{background:linear-gradient(180deg,#3a7ee6,#2a63c2)}
   .hr{height:1px;background:var(--panel-bd);margin:13px 0}
   .hint{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:2px}
 
-  /* Stats (right) */
-  #stats{top:14px;right:14px;width:212px;padding:13px 14px}
+  #stats{top:14px;right:14px;width:214px;padding:13px 14px}
   #stats h2{font-size:12px;margin:0 0 10px;color:var(--accent2);text-transform:uppercase;letter-spacing:.08em}
   .stat{display:flex;justify-content:space-between;align-items:baseline;margin:7px 0;font-size:12px}
   .stat span{color:var(--muted)}
   .stat b{font-size:15px;font-variant-numeric:tabular-nums}
   .stat b.t{font-size:13px}
-  #state{font-size:12px;text-align:center;margin-top:10px;padding:5px;border-radius:7px;
-    background:#1a2233;font-weight:600}
-  #state.cooling{color:var(--warn)}
-  #state.done{color:var(--good)}
-  #state.paused{color:var(--muted)}
+  #state{font-size:12px;text-align:center;margin-top:10px;padding:5px;border-radius:7px;background:#1a2233;font-weight:600}
+  #state.cooling{color:var(--warn)} #state.done{color:var(--good)} #state.paused{color:var(--muted)}
 
-  /* Legend (bottom-left) */
   #legend{bottom:14px;left:14px;padding:12px 14px;display:flex;gap:10px;align-items:stretch}
   #legend .bar{width:16px;border-radius:5px;border:1px solid var(--panel-bd)}
-  #legend .scale{display:flex;flex-direction:column;justify-content:space-between;
-    font-size:11px;font-variant-numeric:tabular-nums}
-  #legend .ttl{font-size:10px;color:var(--muted);writing-mode:vertical-rl;text-orientation:mixed;
-    align-self:center}
+  #legend .scale{display:flex;flex-direction:column;justify-content:space-between;font-size:11px;font-variant-numeric:tabular-nums}
+  #legend .ttl{font-size:10px;color:var(--muted);writing-mode:vertical-rl;text-orientation:mixed;align-self:center}
 
-  /* Chart (bottom-right) */
   #chartWrap{bottom:14px;right:14px;padding:10px 12px 8px}
-  #chartWrap .ct{font-size:11px;color:var(--muted);margin-bottom:6px;display:flex;
-    justify-content:space-between;align-items:center}
-  .lg{display:inline-flex;gap:10px;font-size:10.5px}
+  #chartWrap .ct{font-size:11px;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+  .lg{display:inline-flex;gap:9px;font-size:10px}
   .lg i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:middle}
   #chart{display:block;border-radius:6px}
 
-  /* Loading / error */
-  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    flex-direction:column;gap:10px;background:var(--bg);z-index:50;text-align:center;padding:20px}
-  #loading .sp{width:34px;height:34px;border:3px solid #2a3650;border-top-color:var(--accent);
-    border-radius:50%;animation:spin 1s linear infinite}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:var(--bg);z-index:50;text-align:center;padding:20px}
+  #loading .sp{width:34px;height:34px;border:3px solid #2a3650;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   #loading small{color:var(--muted);max-width:340px;line-height:1.6}
 
-  @media (max-width:760px){
-    #controls{width:248px}
-    #stats{width:176px}
-    #chartWrap{display:none}
-    #title{display:none}
-  }
-  /* hidden scrollbar styling */
+  @media (max-width:760px){ #controls{width:248px} #stats{width:176px} #chartWrap{display:none} #title{display:none} }
   #controls::-webkit-scrollbar{width:8px}
   #controls::-webkit-scrollbar-thumb{background:#2a3650;border-radius:4px}
 </style>
@@ -105,12 +78,12 @@
 <div id="loading">
   <div class="sp"></div>
   <div>3Dシミュレータを初期化しています…</div>
-  <small>Three.js を CDN から読み込みます。表示されない場合はインターネット接続をご確認ください。</small>
+  <small>Three.js を CDN（unpkg.com）から読み込みます。表示されない場合はインターネット接続をご確認ください。</small>
 </div>
 
 <div id="title" class="panel">
   <h1>アルミニウムコイル 冷却シミュレータ</h1>
-  <p>半径方向 熱伝導 ＋ 対流・放射冷却の3Dシミュレーション</p>
+  <p>横置き（eye-to-wall）・片側送風 ／ 半径方向＋幅方向の熱伝導（2次元）</p>
 </div>
 
 <div id="controls" class="panel">
@@ -139,7 +112,6 @@
 
   <div class="hr"></div>
   <h2>材料・温度</h2>
-
   <div class="row">
     <label>合金 / 材質<b id="valAlloy"></b></label>
     <select id="selAlloy">
@@ -162,25 +134,31 @@
     <input id="rngEmis" type="range" min="0.02" max="0.95" step="0.01" value="0.20">
   </div>
   <div class="row">
-    <label>半径方向 実効熱伝導率 k<b id="valK">3.0 W/mK</b></label>
-    <input id="rngK" type="range" min="0" max="1000" step="1" value="0">
-    <div class="hint">巻き重なり部の空気層・酸化皮膜により、コイル半径方向の実効値は無垢材（約237）より大幅に低下します。</div>
+    <label>半径方向 実効熱伝導率 k<sub>r</sub><b id="valKr">3.0 W/mK</b></label>
+    <input id="rngKr" type="range" min="0" max="1000" step="1" value="0">
+    <div class="hint">巻き重なり部の空気層・酸化皮膜により、半径方向の実効値は無垢材より大幅に低下します。</div>
+  </div>
+  <div class="row">
+    <label>幅方向 熱伝導率 k<sub>z</sub><b id="valKz">160 W/mK</b></label>
+    <input id="rngKz" type="range" min="0" max="1000" step="1" value="0">
+    <div class="hint">幅方向は連続金属のため伝導が速く、軸方向の温度差は小さめになります（物理的に正しい挙動）。下げると軸方向差が顕著に。</div>
   </div>
 
   <div class="hr"></div>
-  <h2>冷却条件</h2>
+  <h2>送風・冷却条件</h2>
   <div class="row">
-    <label>冷却方法<b></b></label>
+    <label>送風 強さ（風上面）<b></b></label>
     <select id="selCooling">
-      <option value="10" selected>自然空冷（静止空気）</option>
-      <option value="60">強制空冷（ファン）</option>
-      <option value="300">ミスト冷却</option>
-      <option value="3000">水焼入れ（急冷）</option>
+      <option value="8">自然対流（ほぼ無風）</option>
+      <option value="40">送風（弱）</option>
+      <option value="90" selected>送風（標準）</option>
+      <option value="250">ミスト送風（強）</option>
     </select>
   </div>
   <div class="row">
-    <label>熱伝達係数 h<b id="valH">10 W/m²K</b></label>
+    <label>熱伝達係数 h（風上面）<b id="valH">90 W/m²K</b></label>
     <input id="rngH" type="range" min="0" max="1000" step="1" value="0">
+    <div class="hint">片側のフラット面（風上面）に当たる風の強さ。風下面・外周・巻芯はこれより弱い係数で冷却します。</div>
   </div>
 
   <div class="hr"></div>
@@ -204,9 +182,9 @@
   <h2>状態 / Status</h2>
   <div class="stat"><span>経過（コイル時間）</span><b class="t" id="stTime">0 秒</b></div>
   <div class="stat"><span>中心温度（最高）</span><b id="stCore">—</b></div>
-  <div class="stat"><span>表面温度</span><b id="stSurf">—</b></div>
+  <div class="stat"><span>風上面 温度</span><b id="stWind">—</b></div>
+  <div class="stat"><span>風下面 温度</span><b id="stLee">—</b></div>
   <div class="stat"><span>平均温度</span><b id="stAvg">—</b></div>
-  <div class="stat"><span>中心−表面 差</span><b id="stGrad">—</b></div>
   <div id="state" class="paused">一時停止中</div>
 </div>
 
@@ -219,9 +197,13 @@
 <div id="chartWrap" class="panel">
   <div class="ct">
     <span>温度推移</span>
-    <span class="lg"><span><i style="background:#ff5a47"></i>中心</span><span><i style="background:#4ea1ff"></i>表面</span></span>
+    <span class="lg">
+      <span><i style="background:#ff5a47"></i>中心</span>
+      <span><i style="background:#4ea1ff"></i>風上面</span>
+      <span><i style="background:#ffb454"></i>風下面</span>
+    </span>
   </div>
-  <canvas id="chart" width="280" height="150"></canvas>
+  <canvas id="chart" width="290" height="150"></canvas>
 </div>
 
 <script type="importmap">
@@ -241,558 +223,442 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 //  定数・物性
 // ============================================================
 const SIGMA = 5.670374419e-8;     // ステファン・ボルツマン定数 W/m²K⁴
-const N = 30;                     // 半径方向の分割数（有限体積セル数）
-const BORE_FACTOR = 0.7;          // 内径(巻芯)側 対流の有効係数（外周より弱い）
-const MAX_SUBSTEPS = 3000;        // 1フレームあたり最大計算ステップ
+const NR = 24;                    // 半径方向 セル数
+const NZ = 16;                    // 幅(軸)方向 セル数
+const MAX_SUBSTEPS = 3000;        // 1フレーム最大計算ステップ
 const DEG = Math.PI / 180;
 
-// 合金物性（ρ:密度 kg/m³, cp:比熱 J/kgK）
+// 非対称な冷却係数（風上面=1.0 を基準とした比率）
+const F_WIND = 1.0;   // 風上フラット面（軸 -X）
+const F_LEE  = 0.25;  // 風下フラット面（後流）
+const F_OUT  = 0.55;  // 外周面（風が回り込む）
+const F_BORE = 0.40;  // 内周面（巻芯・眼）
+
+// 合金物性（ρ:密度, cp:比熱, kz:幅方向＝無垢材 熱伝導率）
 const ALLOYS = {
-  '1100': { rho: 2710, cp: 904, name: 'A1100' },
-  '3003': { rho: 2730, cp: 893, name: 'A3003' },
-  '5052': { rho: 2680, cp: 880, name: 'A5052' },
-  '6061': { rho: 2700, cp: 896, name: 'A6061' },
+  '1100': { rho:2710, cp:904, kz:222, name:'A1100' },
+  '3003': { rho:2730, cp:893, kz:160, name:'A3003' },
+  '5052': { rho:2680, cp:880, kz:138, name:'A5052' },
+  '6061': { rho:2700, cp:896, kz:167, name:'A6061' },
 };
 
-// カラーマップ（青=低温 → 赤=高温）
 const STOPS = [
-  [0.00, [0.05, 0.07, 0.32]],
-  [0.15, [0.10, 0.32, 0.86]],
-  [0.35, [0.10, 0.76, 0.88]],
-  [0.50, [0.22, 0.80, 0.32]],
-  [0.66, [0.96, 0.91, 0.22]],
-  [0.82, [0.97, 0.55, 0.10]],
-  [1.00, [0.86, 0.11, 0.08]],
+  [0.00,[0.05,0.07,0.32]],[0.15,[0.10,0.32,0.86]],[0.35,[0.10,0.76,0.88]],
+  [0.50,[0.22,0.80,0.32]],[0.66,[0.96,0.91,0.22]],[0.82,[0.97,0.55,0.10]],[1.00,[0.86,0.11,0.08]],
 ];
-
 function colormap(t){
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  t = t<0?0:t>1?1:t;
   for(let i=0;i<STOPS.length-1;i++){
-    const a = STOPS[i], b = STOPS[i+1];
-    if(t <= b[0]){
-      const f = (t - a[0]) / (b[0] - a[0] || 1);
-      return [
-        a[1][0] + (b[1][0]-a[1][0])*f,
-        a[1][1] + (b[1][1]-a[1][1])*f,
-        a[1][2] + (b[1][2]-a[1][2])*f,
-      ];
-    }
+    const a=STOPS[i], b=STOPS[i+1];
+    if(t<=b[0]){ const f=(t-a[0])/(b[0]-a[0]||1);
+      return [a[1][0]+(b[1][0]-a[1][0])*f, a[1][1]+(b[1][1]-a[1][1])*f, a[1][2]+(b[1][2]-a[1][2])*f]; }
   }
   return STOPS[STOPS.length-1][1];
 }
 
 // ============================================================
-//  シミュレーション状態
+//  シミュレーション状態（2次元 r×z 軸対称）
 // ============================================================
-const P = {                 // パラメータ（SI単位, 温度は°C）
-  initT: 350, ambT: 25, emis: 0.20, k: 3.0, h: 10,
-  OD: 1.8, ID: 0.6, W: 1.5,
-  rho: 2730, cp: 893,
-  speed: 1800,
+const P = {
+  initT:350, ambT:25, emis:0.20, kr:3.0, kz:160, h:90,
+  OD:1.8, ID:0.6, W:1.5, rho:2730, cp:893, speed:1800,
 };
 
-let T  = new Float64Array(N);   // 各セル温度 °C
-let Tn = new Float64Array(N);
-let simTime = 0;                // 経過（コイル時間）秒
-let playing = false;
-let settled = false;
+let T  = new Float64Array(NR*NZ);  // T[i*NZ+j]  i:半径 j:軸(0=風上)
+let Tn = new Float64Array(NR*NZ);
+let simTime = 0, playing = false, settled = false;
 
-// 幾何定数（buildModel で更新）
-let rIn, rOut, dr;
-const rf   = new Float64Array(N+1); // セル境界半径
-const Vol  = new Float64Array(N);   // セル体積（コイル全周）
-const Aface= new Float64Array(N+1); // 半径方向 伝熱面積
-const Aend = new Float64Array(N);   // 端面（上下）面積
-let Ainner, Aouter;
+let rIn, rOut, dr, dz;
+const rf     = new Float64Array(NR+1);  // 半径境界
+const Voli   = new Float64Array(NR);    // セル体積（軸スライス）
+const AzArea = new Float64Array(NR);    // 端面(環状)面積＝軸方向 伝熱面積
+const ArFace = new Float64Array(NR+1);  // 半径方向 伝熱面積（軸スライス）
+let sumVoli = 0, sumAz = 0;
 
 let legendMin = 25, legendMax = 350;
+let hist = { t:[], core:[], wind:[], lee:[] };
 
-// 履歴（グラフ用）
-const hist = { t: [], core: [], surf: [] };
+const idx = (i,j)=> i*NZ + j;
 
 // ============================================================
-//  物理：1ステップ更新（陽解法・有限体積）
+//  物理
 // ============================================================
 function surfLoss(Tc, h, A){
-  // 対流 + 放射 による熱損失 [W]（Tc>ambで正）
-  const Tk = Tc + 273.15, Tak = P.ambT + 273.15;
-  return (h*(Tc - P.ambT) + P.emis*SIGMA*(Tk*Tk*Tk*Tk - Tak*Tak*Tak*Tak)) * A;
+  const Tk=Tc+273.15, Tak=P.ambT+273.15;
+  return (h*(Tc-P.ambT) + P.emis*SIGMA*(Tk*Tk*Tk*Tk - Tak*Tak*Tak*Tak))*A;
 }
 function hRad(Tc){
-  const Tk = Tc + 273.15, Tak = P.ambT + 273.15;
-  return P.emis*SIGMA*(Tk + Tak)*(Tk*Tk + Tak*Tak);
+  const Tk=Tc+273.15, Tak=P.ambT+273.15;
+  return P.emis*SIGMA*(Tk+Tak)*(Tk*Tk+Tak*Tak);
 }
 
 function stableDt(){
-  // 陽解法の安定条件から許容時間刻みを推定
   let dtMin = Infinity;
-  for(let i=0;i<N;i++){
-    const hr = hRad(T[i]);
-    let G = (P.h + hr) * Aend[i];                         // 端面
-    G += (i>0)   ? P.k*Aface[i]/dr   : (P.h*BORE_FACTOR + hr)*Ainner;   // 内側
-    G += (i<N-1) ? P.k*Aface[i+1]/dr : (P.h + hr)*Aouter;              // 外側
-    const C = P.rho * P.cp * Vol[i];
-    const dti = C / G;
-    if(dti < dtMin) dtMin = dti;
+  for(let i=0;i<NR;i++){
+    const C = P.rho*P.cp*Voli[i];
+    for(let j=0;j<NZ;j++){
+      const hr = hRad(T[idx(i,j)]);
+      let G = 0;
+      G += (i>0)    ? P.kr*ArFace[i]/dr    : (P.h*F_BORE+hr)*ArFace[0];
+      G += (i<NR-1) ? P.kr*ArFace[i+1]/dr  : (P.h*F_OUT +hr)*ArFace[NR];
+      G += (j>0)    ? P.kz*AzArea[i]/dz    : (P.h*F_WIND+hr)*AzArea[i];
+      G += (j<NZ-1) ? P.kz*AzArea[i]/dz    : (P.h*F_LEE +hr)*AzArea[i];
+      const dti = C/G;
+      if(dti<dtMin) dtMin = dti;
+    }
   }
-  return Math.max(1e-4, 0.5 * dtMin);
+  return Math.max(1e-4, 0.5*dtMin);
 }
 
 function step(dt){
-  for(let i=0;i<N;i++){
-    let Q = 0;
-    // 内側面：隣接セルへの伝導 or 内径面からの放熱
-    if(i>0) Q += P.k * Aface[i] * (T[i-1]-T[i]) / dr;
-    else    Q -= surfLoss(T[0], P.h*BORE_FACTOR, Ainner);
-    // 外側面：隣接セルへの伝導 or 外径面からの放熱
-    if(i<N-1) Q += P.k * Aface[i+1] * (T[i+1]-T[i]) / dr;
-    else      Q -= surfLoss(T[N-1], P.h, Aouter);
-    // 上下端面からの放熱
-    Q -= surfLoss(T[i], P.h, Aend[i]);
-
-    Tn[i] = T[i] + dt * Q / (P.rho * P.cp * Vol[i]);
+  for(let i=0;i<NR;i++){
+    const C = P.rho*P.cp*Voli[i];
+    for(let j=0;j<NZ;j++){
+      const t0 = T[idx(i,j)];
+      let Q = 0;
+      // 半径方向
+      if(i>0)    Q += P.kr*ArFace[i]  *(T[idx(i-1,j)]-t0)/dr;
+      else       Q -= surfLoss(t0, P.h*F_BORE, ArFace[0]);
+      if(i<NR-1) Q += P.kr*ArFace[i+1]*(T[idx(i+1,j)]-t0)/dr;
+      else       Q -= surfLoss(t0, P.h*F_OUT,  ArFace[NR]);
+      // 幅(軸)方向
+      if(j>0)    Q += P.kz*AzArea[i]*(T[idx(i,j-1)]-t0)/dz;
+      else       Q -= surfLoss(t0, P.h*F_WIND, AzArea[i]);   // 風上面
+      if(j<NZ-1) Q += P.kz*AzArea[i]*(T[idx(i,j+1)]-t0)/dz;
+      else       Q -= surfLoss(t0, P.h*F_LEE,  AzArea[i]);   // 風下面
+      Tn[idx(i,j)] = t0 + dt*Q/C;
+    }
   }
-  const tmp = T; T = Tn; Tn = tmp;
+  const tmp=T; T=Tn; Tn=tmp;
 }
 
-function advance(targetSeconds){
-  let remaining = targetSeconds, count = 0;
-  const dts = stableDt();
-  while(remaining > 1e-9 && count < MAX_SUBSTEPS){
-    const dt = Math.min(dts, remaining);
-    step(dt);
-    simTime += dt; remaining -= dt; count++;
-  }
+function advance(target){
+  let r=target, c=0; const dts=stableDt();
+  while(r>1e-9 && c<MAX_SUBSTEPS){ const dt=Math.min(dts,r); step(dt); simTime+=dt; r-=dt; c++; }
 }
 
-// 解析用 集計
-function coreTemp(){ let m=-Infinity; for(let i=0;i<N;i++) if(T[i]>m) m=T[i]; return m; }
-function avgTemp(){ let s=0, v=0; for(let i=0;i<N;i++){ s+=T[i]*Vol[i]; v+=Vol[i]; } return s/v; }
-function surfTemp(){ return T[N-1]; }
+// 集計
+function coreTemp(){ let m=-Infinity; for(let k=0;k<T.length;k++) if(T[k]>m) m=T[k]; return m; }
+function faceAvg(j){ let s=0; for(let i=0;i<NR;i++) s+=T[idx(i,j)]*AzArea[i]; return s/sumAz; }
+function avgTemp(){ let s=0; for(let i=0;i<NR;i++) for(let j=0;j<NZ;j++) s+=T[idx(i,j)]*Voli[i]; return s/(sumVoli*NZ); }
 
-// 半径 r における温度（セル中心値の線形補間）
-function tempAtRadius(r){
-  const x = (r - rIn)/dr - 0.5;
-  if(x <= 0) return T[0];
-  if(x >= N-1) return T[N-1];
-  const i = Math.floor(x), f = x - i;
-  return T[i]*(1-f) + T[i+1]*f;
+// 半径 r・軸位置 ax における温度（双線形補間）
+function tempAt(r, ax){
+  let fi=(r-rIn)/dr-0.5; if(fi<0)fi=0; else if(fi>NR-1)fi=NR-1;
+  let fj=(ax+P.W/2)/dz-0.5; if(fj<0)fj=0; else if(fj>NZ-1)fj=NZ-1;
+  const i0=Math.floor(fi), j0=Math.floor(fj);
+  const i1=Math.min(i0+1,NR-1), j1=Math.min(j0+1,NZ-1);
+  const fr=fi-i0, fz=fj-j0;
+  return T[idx(i0,j0)]*(1-fr)*(1-fz) + T[idx(i1,j0)]*fr*(1-fz)
+       + T[idx(i0,j1)]*(1-fr)*fz     + T[idx(i1,j1)]*fr*fz;
 }
 
 // ============================================================
-//  Three.js シーン
+//  Three.js
 // ============================================================
 let renderer, scene, camera, controls, grid, mesh, geo, colorAttr;
-let vRadius;        // 各頂点の半径（再着色用）
-let sectionCut = true;   // 断面（切り欠き）表示
-const A_GAP = 60;        // 切り欠き角度(deg)
-const A_START = 75 * DEG;
+let vR=[], vX=[];          // 各頂点の (半径, 軸位置)
+let windGroup, windArrows=[];
+let sectionCut = false;    // 既定はフル円筒（切り欠きなし）
+const A_GAP = 70, A_START = 80*DEG;  // 断面表示時の切り欠き
 
 function initThree(){
-  const app = document.getElementById('app');
-  renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0x0b0e14, 1);
+  const app=document.getElementById('app');
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setClearColor(0x0b0e14,1);
   app.appendChild(renderer.domElement);
 
-  scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0b0e14, 8, 26);
+  scene=new THREE.Scene();
+  scene.fog=new THREE.Fog(0x0b0e14, 9, 30);
+  camera=new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.01, 200);
 
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 200);
+  controls=new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping=true; controls.dampingFactor=0.08;
+  controls.minDistance=0.6; controls.maxDistance=44;
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.minDistance = 0.6;
-  controls.maxDistance = 40;
+  scene.add(new THREE.HemisphereLight(0xcfe0ff,0x303040,0.85));
+  const dl=new THREE.DirectionalLight(0xffffff,1.1); dl.position.set(-3,6,5); scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0xaecbff,0.35); dl2.position.set(5,2,-4); scene.add(dl2);
 
-  scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x303040, 0.85));
-  const dl = new THREE.DirectionalLight(0xffffff, 1.1);
-  dl.position.set(4, 7, 5); scene.add(dl);
-  const dl2 = new THREE.DirectionalLight(0xaecbff, 0.35);
-  dl2.position.set(-5, 2, -4); scene.add(dl2);
-
-  window.addEventListener('resize', onResize);
+  addEventListener('resize', onResize);
 }
+function onResize(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); }
 
-function onResize(){
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-// くさび切り欠き付き 環状ソリッドの生成
+// 横置き（軸=X）のドーナツ型円柱。X=-W/2 が風上フラット面。
 function buildGeometry(){
-  const positions = [], radii = [], indices = [];
-  const aSpan = sectionCut ? (360 - A_GAP)*DEG : 360*DEG;
-  const aSeg = sectionCut ? 90 : 100;
-  const rSeg = 46, hSeg = 1;
-  const halfW = P.W/2;
+  const positions=[], indices=[]; vR=[]; vX=[];
+  const aSpan = sectionCut ? (360-A_GAP)*DEG : Math.PI*2;
+  const aSeg  = sectionCut ? 92 : 112;
+  const rSeg=30, axSeg=24, halfW=P.W/2;
 
-  function addGrid(uCount, vCount, fn){
-    const base = positions.length/3;
-    for(let iu=0;iu<=uCount;iu++)
-      for(let iv=0;iv<=vCount;iv++){
-        const p = fn(iu/uCount, iv/vCount);
-        positions.push(p.x, p.y, p.z); radii.push(p.r);
-      }
-    for(let iu=0;iu<uCount;iu++)
-      for(let iv=0;iv<vCount;iv++){
-        const a = base + iu*(vCount+1) + iv;
-        const b = base + (iu+1)*(vCount+1) + iv;
-        const c = base + (iu+1)*(vCount+1) + (iv+1);
-        const d = base + iu*(vCount+1) + (iv+1);
-        indices.push(a,b,c, a,c,d);
-      }
+  function addGrid(uCount,vCount,fn){
+    const base=positions.length/3;
+    for(let iu=0;iu<=uCount;iu++) for(let iv=0;iv<=vCount;iv++){
+      const p=fn(iu/uCount, iv/vCount);
+      positions.push(p.x,p.y,p.z); vR.push(p.r); vX.push(p.ax);
+    }
+    for(let iu=0;iu<uCount;iu++) for(let iv=0;iv<vCount;iv++){
+      const a=base+iu*(vCount+1)+iv, b=base+(iu+1)*(vCount+1)+iv;
+      const c=base+(iu+1)*(vCount+1)+(iv+1), d=base+iu*(vCount+1)+(iv+1);
+      indices.push(a,b,c, a,c,d);
+    }
   }
-  const ang = u => A_START + u*aSpan;
-  const rad = v => rIn + v*(rOut - rIn);
+  const ang=u=> A_START + u*aSpan;          // 断面時は A_START 起点
+  const ang0=u=> u*aSpan;                    // フル時は 0 起点
+  const A = sectionCut ? ang : ang0;
+  const rad=v=> rIn + v*(rOut-rIn);
 
-  // 上面・下面（半径方向に温度勾配が見える）
-  for(const sgn of [1,-1]){
-    addGrid(aSeg, rSeg, (u,v)=>{
-      const a = ang(u), r = rad(v);
-      return { x: r*Math.cos(a), y: sgn*halfW, z: r*Math.sin(a), r };
-    });
-  }
-  // 外周面・内周面
-  addGrid(aSeg, hSeg, (u,v)=>{
-    const a = ang(u), y = -halfW + v*P.W;
-    return { x: rOut*Math.cos(a), y, z: rOut*Math.sin(a), r: rOut };
-  });
-  addGrid(aSeg, hSeg, (u,v)=>{
-    const a = ang(u), y = -halfW + v*P.W;
-    return { x: rIn*Math.cos(a), y, z: rIn*Math.sin(a), r: rIn };
-  });
-  // 切り欠き端面（断面：半径方向勾配がよく見える）
+  // 外周面・内周面（軸方向に温度勾配 → 風上側が低温）
+  addGrid(aSeg, axSeg, (u,v)=>{ const a=A(u), ax=-halfW+v*P.W; return {x:ax, y:rOut*Math.cos(a), z:rOut*Math.sin(a), r:rOut, ax}; });
+  addGrid(aSeg, axSeg, (u,v)=>{ const a=A(u), ax=-halfW+v*P.W; return {x:ax, y:rIn *Math.cos(a), z:rIn *Math.sin(a), r:rIn,  ax}; });
+  // 風上フラット面 (X=-W/2)・風下フラット面 (X=+W/2)：半径方向の勾配が見える
+  addGrid(aSeg, rSeg, (u,v)=>{ const a=A(u), r=rad(v); return {x:-halfW, y:r*Math.cos(a), z:r*Math.sin(a), r, ax:-halfW}; });
+  addGrid(aSeg, rSeg, (u,v)=>{ const a=A(u), r=rad(v); return {x:+halfW, y:r*Math.cos(a), z:r*Math.sin(a), r, ax:+halfW}; });
+  // 断面表示時：切り欠き端面（r×軸 の2次元温度場が見える）
   if(sectionCut){
-    for(const a of [A_START, A_START + aSpan]){
-      addGrid(rSeg, hSeg, (u,v)=>{
-        const r = rad(u), y = -halfW + v*P.W;
-        return { x: r*Math.cos(a), y, z: r*Math.sin(a), r };
-      });
+    for(const a of [A_START, A_START+aSpan]){
+      addGrid(rSeg, axSeg, (u,v)=>{ const r=rad(u), ax=-halfW+v*P.W; return {x:ax, y:r*Math.cos(a), z:r*Math.sin(a), r, ax}; });
     }
   }
 
-  geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  colorAttr = new THREE.Float32BufferAttribute(new Float32Array(positions.length), 3);
+  geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  colorAttr=new THREE.Float32BufferAttribute(new Float32Array(positions.length),3);
   geo.setAttribute('color', colorAttr);
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  vRadius = radii;
+}
+
+function makeTextSprite(txt){
+  const c=document.createElement('canvas'); c.width=320; c.height=128;
+  const g=c.getContext('2d');
+  g.font='bold 60px sans-serif'; g.fillStyle='#9fe0ff'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(txt,160,64);
+  const tex=new THREE.CanvasTexture(c); tex.anisotropy=4;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthTest:false}));
+  return sp;
+}
+
+function buildWind(){
+  if(windGroup) scene.remove(windGroup);
+  windGroup=new THREE.Group(); windArrows=[];
+  const len=Math.min(0.55, Math.max(0.2, P.W*0.35));
+  const startX=-P.W/2 - len - 0.10;
+  const rings=[rIn+(rOut-rIn)*0.18, rIn+(rOut-rIn)*0.5, rIn+(rOut-rIn)*0.85];
+  const nA=8, dir=new THREE.Vector3(1,0,0);
+  let k=0;
+  for(const rr of rings) for(let a=0;a<nA;a++){
+    const th=(a/nA)*Math.PI*2 + rr*2.7;
+    const y=rr*Math.cos(th), z=rr*Math.sin(th);
+    const arr=new THREE.ArrowHelper(dir, new THREE.Vector3(startX,y,z), len, 0x7fd4ff, len*0.38, len*0.24);
+    arr.userData={baseX:startX, phase:(k*0.37)%1};
+    windGroup.add(arr); windArrows.push(arr); k++;
+  }
+  const lab=makeTextSprite('送風 ▶');
+  const s=Math.max(0.7, rOut*0.9); lab.scale.set(s, s*0.4, 1);
+  lab.position.set(startX-0.15, rOut+0.28, 0);
+  windGroup.add(lab);
+  scene.add(windGroup);
 }
 
 function buildModel(resetTemps){
-  // 寸法（m）から幾何定数を更新
-  rIn = P.ID/2; rOut = P.OD/2; dr = (rOut - rIn)/N;
-  for(let i=0;i<=N;i++){ rf[i] = rIn + i*dr; Aface[i] = 2*Math.PI*rf[i]*P.W; }
-  for(let i=0;i<N;i++){
-    const a = rf[i], b = rf[i+1];
-    Vol[i]  = Math.PI*(b*b - a*a)*P.W;
-    Aend[i] = 2*Math.PI*(b*b - a*a);   // 上下2面
+  rIn=P.ID/2; rOut=P.OD/2; dr=(rOut-rIn)/NR; dz=P.W/NZ;
+  sumVoli=0; sumAz=0;
+  for(let i=0;i<=NR;i++){ rf[i]=rIn+i*dr; ArFace[i]=2*Math.PI*rf[i]*dz; }
+  for(let i=0;i<NR;i++){
+    const a=rf[i], b=rf[i+1];
+    AzArea[i]=Math.PI*(b*b-a*a);
+    Voli[i]=AzArea[i]*dz;
+    sumVoli+=Voli[i]; sumAz+=AzArea[i];
   }
-  Ainner = Aface[0]; Aouter = Aface[N];
 
   if(resetTemps){
-    for(let i=0;i<N;i++) T[i] = P.initT;
-    simTime = 0; settled = false;
-    hist.t.length = 0; hist.core.length = 0; hist.surf.length = 0;
-    legendMin = P.ambT; legendMax = Math.max(P.initT, P.ambT + 1);
+    T.fill(P.initT);
+    simTime=0; settled=false;
+    hist={t:[],core:[],wind:[],lee:[]};
+    legendMin=P.ambT; legendMax=Math.max(P.initT, P.ambT+1);
     updateLegend();
   }
 
-  // ジオメトリ再構築
   if(mesh){ scene.remove(mesh); geo.dispose(); }
   buildGeometry();
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors:true, metalness:0.12, roughness:0.62, side:THREE.DoubleSide,
-  });
-  mesh = new THREE.Mesh(geo, mat);
-  scene.add(mesh);
+  const mat=new THREE.MeshStandardMaterial({vertexColors:true, metalness:0.12, roughness:0.62, side:THREE.DoubleSide});
+  mesh=new THREE.Mesh(geo, mat); scene.add(mesh);
 
-  // 床グリッド
   if(grid) scene.remove(grid);
-  const span = Math.ceil(P.OD*1.6);
-  grid = new THREE.GridHelper(span*2, span*2, 0x2a3650, 0x18202f);
-  grid.position.y = -P.W/2 - 0.02;
-  scene.add(grid);
+  const span=Math.ceil(Math.max(P.OD,P.W)*1.7);
+  grid=new THREE.GridHelper(span*2, span*2, 0x2a3650, 0x18202f);
+  grid.position.y=-rOut-0.02; scene.add(grid);
 
+  buildWind();
   recolor();
 }
 
 function resetView(){
-  const d = Math.max(P.OD, P.W) * 1.85;
-  camera.position.set(d*0.82, d*0.55, d*0.82);
-  controls.target.set(0, 0, 0);
-  controls.update();
+  const d=Math.max(P.OD,P.W)*1.9;
+  camera.position.set(-d*0.92, d*0.42, d*0.86);
+  controls.target.set(0,0,0); controls.update();
 }
 
 function recolor(){
-  const inv = 1/(legendMax - legendMin);
-  for(let vi=0; vi<vRadius.length; vi++){
-    const Tc = tempAtRadius(vRadius[vi]);
-    const c = colormap((Tc - legendMin)*inv);
-    colorAttr.setXYZ(vi, c[0], c[1], c[2]);
+  const inv=1/(legendMax-legendMin);
+  for(let v=0; v<vR.length; v++){
+    const Tc=tempAt(vR[v], vX[v]);
+    const c=colormap((Tc-legendMin)*inv);
+    colorAttr.setXYZ(v, c[0], c[1], c[2]);
   }
-  colorAttr.needsUpdate = true;
+  colorAttr.needsUpdate=true;
 }
 
 // ============================================================
 //  UI
 // ============================================================
-const $ = id => document.getElementById(id);
-
-function fmtTime(s){
-  s = Math.floor(s);
-  if(s < 60) return s + ' 秒';
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
-  if(h > 0) return `${h} 時間 ${m} 分`;
-  return `${m} 分 ${sec} 秒`;
+const $=id=>document.getElementById(id);
+function fmtTime(s){ s=Math.floor(s);
+  if(s<60) return s+' 秒';
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+  return h>0 ? `${h} 時間 ${m} 分` : `${m} 分 ${sec} 秒`;
 }
-function fmtTimeShort(s){
-  if(s < 3600) return Math.floor(s/60) + 'm';
-  return (s/3600).toFixed(1) + 'h';
-}
+function fmtTimeShort(s){ return s<3600 ? Math.floor(s/60)+'m' : (s/3600).toFixed(1)+'h'; }
 
-// 対数スライダー（0..1000 → min..max）
-const logVal = (min,max,s)=> min*Math.pow(max/min, s/1000);
-const logPos = (min,max,v)=> Math.round(1000*Math.log(v/min)/Math.log(max/min));
-const H_MIN=2, H_MAX=6000, K_MIN=0.5, K_MAX=237;
+const logVal=(min,max,s)=> min*Math.pow(max/min, s/1000);
+const logPos=(min,max,v)=> Math.round(1000*Math.log(v/min)/Math.log(max/min));
+const H_MIN=2,H_MAX=6000, K_MIN=0.5,K_MAX=237;
 
 function setPlay(on){
-  playing = on;
-  $('btnPlay').textContent = on ? '⏸ 一時停止' : '▶ 再生';
+  playing=on;
+  $('btnPlay').textContent= on?'⏸ 一時停止':'▶ 再生';
   $('btnPlay').classList.toggle('primary', !on);
-  if(on) settled = false;
+  if(on) settled=false;
   updateState();
 }
-
 function updateState(){
-  const el = $('state');
-  if(settled){ el.textContent = '✓ 冷却完了（平衡）'; el.className = 'done'; }
-  else if(playing){ el.textContent = '● 冷却中…'; el.className = 'cooling'; }
-  else { el.textContent = '一時停止中'; el.className = 'paused'; }
+  const el=$('state');
+  if(settled){ el.textContent='✓ 冷却完了（平衡）'; el.className='done'; }
+  else if(playing){ el.textContent='● 冷却中…'; el.className='cooling'; }
+  else { el.textContent='一時停止中'; el.className='paused'; }
 }
-
 function updateLegend(){
-  const bar = $('legendBar');
-  const stops = STOPS.map(s=>{
-    const c = s[1].map(x=>Math.round(x*255));
-    return `rgb(${c[0]},${c[1]},${c[2]}) ${(s[0]*100).toFixed(0)}%`;
-  }).join(',');
-  bar.style.background = `linear-gradient(to top, ${stops})`;
-  bar.style.minHeight = '120px';
-  const sc = $('legendScale');
-  sc.innerHTML = '';
-  for(let i=4;i>=0;i--){
-    const t = i/4, v = legendMin + t*(legendMax-legendMin);
-    const div = document.createElement('div');
-    div.textContent = Math.round(v) + '°';
-    sc.appendChild(div);
-  }
+  const stops=STOPS.map(s=>{ const c=s[1].map(x=>Math.round(x*255)); return `rgb(${c[0]},${c[1]},${c[2]}) ${(s[0]*100).toFixed(0)}%`; }).join(',');
+  const bar=$('legendBar'); bar.style.background=`linear-gradient(to top, ${stops})`; bar.style.minHeight='120px';
+  const sc=$('legendScale'); sc.innerHTML='';
+  for(let i=4;i>=0;i--){ const v=legendMin+(i/4)*(legendMax-legendMin); const d=document.createElement('div'); d.textContent=Math.round(v)+'°'; sc.appendChild(d); }
 }
 
 function bindUI(){
-  // 再生/リセット/視点
-  $('btnPlay').onclick = ()=> setPlay(!playing);
-  $('btnReset').onclick = ()=>{ buildModel(true); setPlay(false); drawChart(); updateStats(); };
-  $('btnView').onclick = resetView;
-  $('btnSection').onclick = ()=>{
-    sectionCut = !sectionCut;
-    $('btnSection').textContent = sectionCut ? '断面 表示' : '全周 表示';
-    buildModel(false);
-  };
+  $('btnPlay').onclick=()=>setPlay(!playing);
+  $('btnReset').onclick=()=>{ buildModel(true); setPlay(false); drawChart(); updateStats(); };
+  $('btnView').onclick=resetView;
+  $('btnSection').onclick=()=>{ sectionCut=!sectionCut;
+    $('btnSection').textContent= sectionCut?'全周 表示':'断面 表示';
+    buildModel(false); };
 
-  // 速度
-  $('selSpeed').onchange = e=>{
-    P.speed = parseFloat(e.target.value);
-    const txt = P.speed >= 1e11 ? '最大' : P.speed + '×';
-    $('valSpeed').textContent = txt;
-  };
+  $('selSpeed').onchange=e=>{ P.speed=parseFloat(e.target.value);
+    $('valSpeed').textContent= P.speed>=1e11?'最大':P.speed+'×'; };
 
-  // 合金
-  $('selAlloy').onchange = e=>{
-    const a = ALLOYS[e.target.value];
-    P.rho = a.rho; P.cp = a.cp;
-    $('valAlloy').textContent = a.name;
-  };
+  $('selAlloy').onchange=e=>{ const a=ALLOYS[e.target.value];
+    P.rho=a.rho; P.cp=a.cp; P.kz=a.kz; $('valAlloy').textContent=a.name;
+    $('rngKz').value=logPos(K_MIN,K_MAX,P.kz); $('valKz').textContent=Math.round(P.kz)+' W/mK';
+    updateDimHint(); };
 
-  // 初期温度（リセットが必要）
-  $('rngInitT').oninput = e=>{
-    P.initT = parseFloat(e.target.value);
-    $('valInitT').textContent = P.initT + ' °C';
-  };
-  $('rngInitT').onchange = ()=>{ buildModel(true); drawChart(); updateStats(); };
+  $('rngInitT').oninput=e=>{ P.initT=parseFloat(e.target.value); $('valInitT').textContent=P.initT+' °C'; };
+  $('rngInitT').onchange=()=>{ buildModel(true); drawChart(); updateStats(); };
 
-  // 周囲温度（即時反映）
-  $('rngAmbT').oninput = e=>{
-    P.ambT = parseFloat(e.target.value);
-    $('valAmbT').textContent = P.ambT + ' °C';
-    legendMin = P.ambT; updateLegend();
-  };
+  $('rngAmbT').oninput=e=>{ P.ambT=parseFloat(e.target.value); $('valAmbT').textContent=P.ambT+' °C';
+    legendMin=P.ambT; updateLegend(); };
+  $('rngEmis').oninput=e=>{ P.emis=parseFloat(e.target.value); $('valEmis').textContent=P.emis.toFixed(2); };
 
-  // 放射率（即時）
-  $('rngEmis').oninput = e=>{
-    P.emis = parseFloat(e.target.value);
-    $('valEmis').textContent = P.emis.toFixed(2);
-  };
+  $('rngKr').oninput=e=>{ P.kr=logVal(K_MIN,K_MAX,parseFloat(e.target.value)); $('valKr').textContent=P.kr.toFixed(1)+' W/mK'; };
+  $('rngKz').oninput=e=>{ P.kz=logVal(K_MIN,K_MAX,parseFloat(e.target.value)); $('valKz').textContent=Math.round(P.kz)+' W/mK'; };
 
-  // 熱伝導率 k（対数, 即時）
-  $('rngK').oninput = e=>{
-    P.k = logVal(K_MIN, K_MAX, parseFloat(e.target.value));
-    $('valK').textContent = P.k.toFixed(1) + ' W/mK';
-  };
+  $('selCooling').onchange=e=>{ P.h=parseFloat(e.target.value);
+    $('rngH').value=logPos(H_MIN,H_MAX,P.h); $('valH').textContent=Math.round(P.h)+' W/m²K'; };
+  $('rngH').oninput=e=>{ P.h=logVal(H_MIN,H_MAX,parseFloat(e.target.value)); $('valH').textContent=Math.round(P.h)+' W/m²K'; };
 
-  // 冷却方法 → h を設定
-  $('selCooling').onchange = e=>{
-    P.h = parseFloat(e.target.value);
-    $('rngH').value = logPos(H_MIN, H_MAX, P.h);
-    $('valH').textContent = Math.round(P.h) + ' W/m²K';
-  };
-  // 熱伝達係数 h（対数, 即時）
-  $('rngH').oninput = e=>{
-    P.h = logVal(H_MIN, H_MAX, parseFloat(e.target.value));
-    $('valH').textContent = Math.round(P.h) + ' W/m²K';
-  };
+  const clampDims=()=>{ if(P.ID>P.OD-0.2){ P.ID=P.OD-0.2; $('rngID').value=Math.round(P.ID*1000); $('valID').textContent=Math.round(P.ID*1000)+' mm'; } };
+  $('rngOD').oninput=e=>{ P.OD=parseFloat(e.target.value)/1000; $('valOD').textContent=Math.round(P.OD*1000)+' mm'; clampDims(); updateDimHint(); };
+  $('rngID').oninput=e=>{ P.ID=parseFloat(e.target.value)/1000; $('valID').textContent=Math.round(P.ID*1000)+' mm'; clampDims(); updateDimHint(); };
+  $('rngW').oninput =e=>{ P.W =parseFloat(e.target.value)/1000; $('valW').textContent =Math.round(P.W*1000)+' mm'; updateDimHint(); };
+  for(const id of ['rngOD','rngID','rngW']) $(id).onchange=()=>{ buildModel(true); resetView(); drawChart(); updateStats(); };
 
-  // 寸法（リセット＋ジオメトリ再構築）
-  const clampDims = ()=>{
-    if(P.ID > P.OD - 0.2){ P.ID = P.OD - 0.2;
-      $('rngID').value = Math.round(P.ID*1000);
-      $('valID').textContent = Math.round(P.ID*1000) + ' mm'; }
-  };
-  $('rngOD').oninput = e=>{ P.OD = parseFloat(e.target.value)/1000;
-    $('valOD').textContent = Math.round(P.OD*1000) + ' mm'; clampDims(); updateDimHint(); };
-  $('rngID').oninput = e=>{ P.ID = parseFloat(e.target.value)/1000;
-    $('valID').textContent = Math.round(P.ID*1000) + ' mm'; clampDims(); updateDimHint(); };
-  $('rngW').oninput  = e=>{ P.W = parseFloat(e.target.value)/1000;
-    $('valW').textContent = Math.round(P.W*1000) + ' mm'; updateDimHint(); };
-  for(const id of ['rngOD','rngID','rngW'])
-    $(id).onchange = ()=>{ buildModel(true); resetView(); drawChart(); updateStats(); };
-
-  // 初期表示反映
-  $('valAlloy').textContent = ALLOYS['3003'].name;
-  $('rngK').value = logPos(K_MIN, K_MAX, P.k);
-  $('valK').textContent = P.k.toFixed(1) + ' W/mK';
-  $('rngH').value = logPos(H_MIN, H_MAX, P.h);
-  $('valH').textContent = Math.round(P.h) + ' W/m²K';
+  $('valAlloy').textContent=ALLOYS['3003'].name;
+  $('rngKr').value=logPos(K_MIN,K_MAX,P.kr); $('valKr').textContent=P.kr.toFixed(1)+' W/mK';
+  $('rngKz').value=logPos(K_MIN,K_MAX,P.kz); $('valKz').textContent=Math.round(P.kz)+' W/mK';
+  $('rngH').value =logPos(H_MIN,H_MAX,P.h);  $('valH').textContent =Math.round(P.h)+' W/m²K';
   updateDimHint();
 }
-
 function updateDimHint(){
-  const massPerCoil = P.rho * Math.PI*((P.OD/2)**2 - (P.ID/2)**2) * P.W;
-  $('dimHint').textContent =
-    `推定質量 約 ${(massPerCoil/1000).toFixed(1)} t（中実換算）／ 肉厚 ${Math.round((P.OD-P.ID)/2*1000)} mm`;
+  const mass=P.rho*Math.PI*((P.OD/2)**2-(P.ID/2)**2)*P.W;
+  $('dimHint').textContent=`推定質量 約 ${(mass/1000).toFixed(1)} t ／ 肉厚 ${Math.round((P.OD-P.ID)/2*1000)} mm ／ 横置き`;
 }
 
 // ============================================================
-//  統計・グラフ描画
+//  統計・グラフ
 // ============================================================
-let lastStat = 0, lastChart = 0;
+let lastStat=0, lastChart=0;
 function updateStats(){
-  const core = coreTemp(), surf = surfTemp(), avg = avgTemp();
-  $('stTime').textContent = fmtTime(simTime);
-  $('stCore').textContent = core.toFixed(1) + ' °C';
-  $('stSurf').textContent = surf.toFixed(1) + ' °C';
-  $('stAvg').textContent  = avg.toFixed(1) + ' °C';
-  $('stGrad').textContent = (core - surf).toFixed(1) + ' °C';
+  $('stTime').textContent=fmtTime(simTime);
+  $('stCore').textContent=coreTemp().toFixed(1)+' °C';
+  $('stWind').textContent=faceAvg(0).toFixed(1)+' °C';
+  $('stLee').textContent =faceAvg(NZ-1).toFixed(1)+' °C';
+  $('stAvg').textContent =avgTemp().toFixed(1)+' °C';
 }
-
 function sample(){
-  hist.t.push(simTime); hist.core.push(coreTemp()); hist.surf.push(surfTemp());
-  if(hist.t.length > 1400){
-    for(const key of ['t','core','surf']){
-      const a = hist[key]; const b = [];
-      for(let i=0;i<a.length;i+=2) b.push(a[i]);
-      hist[key] = b;
-    }
-  }
+  hist.t.push(simTime); hist.core.push(coreTemp()); hist.wind.push(faceAvg(0)); hist.lee.push(faceAvg(NZ-1));
+  if(hist.t.length>1400){ for(const k of ['t','core','wind','lee']){ const a=hist[k], b=[]; for(let i=0;i<a.length;i+=2) b.push(a[i]); hist[k]=b; } }
 }
-
-const chart = $('chart'), cx = chart.getContext('2d');
+const chart=$('chart'), cx=chart.getContext('2d');
 function drawChart(){
-  const W = chart.width, H = chart.height, pad = 26;
-  cx.clearRect(0,0,W,H);
-  cx.fillStyle = '#0e1320'; cx.fillRect(0,0,W,H);
-
-  const tMax = Math.max(1, hist.t[hist.t.length-1] || 1);
-  const yMin = legendMin, yMax = legendMax;
-  const X = t => pad + (W-pad-6) * (t/tMax);
-  const Y = v => (H-pad) - (H-pad-8) * ((v-yMin)/(yMax-yMin || 1));
-
-  // グリッド + 目盛
-  cx.strokeStyle = '#1d2740'; cx.fillStyle = '#5e6b85';
-  cx.font = '9px sans-serif'; cx.lineWidth = 1;
-  for(let i=0;i<=4;i++){
-    const v = yMin + i/4*(yMax-yMin), y = Y(v);
-    cx.beginPath(); cx.moveTo(pad,y); cx.lineTo(W-6,y); cx.stroke();
-    cx.fillText(Math.round(v)+'°', 2, y+3);
-  }
-  cx.fillText('0', pad-2, H-12);
-  cx.fillText(fmtTimeShort(tMax), W-26, H-12);
-
-  // 曲線
-  const line = (arr, color)=>{
-    cx.strokeStyle = color; cx.lineWidth = 1.8; cx.beginPath();
-    for(let i=0;i<arr.length;i++){
-      const x = X(hist.t[i]), y = Y(arr[i]);
-      i ? cx.lineTo(x,y) : cx.moveTo(x,y);
-    }
-    cx.stroke();
-  };
-  if(hist.t.length > 1){
-    line(hist.surf, '#4ea1ff');
-    line(hist.core, '#ff5a47');
-  }
+  const W=chart.width, H=chart.height, pad=26;
+  cx.clearRect(0,0,W,H); cx.fillStyle='#0e1320'; cx.fillRect(0,0,W,H);
+  const tMax=Math.max(1, hist.t[hist.t.length-1]||1), yMin=legendMin, yMax=legendMax;
+  const X=t=> pad+(W-pad-6)*(t/tMax);
+  const Y=v=> (H-pad)-(H-pad-8)*((v-yMin)/(yMax-yMin||1));
+  cx.strokeStyle='#1d2740'; cx.fillStyle='#5e6b85'; cx.font='9px sans-serif'; cx.lineWidth=1;
+  for(let i=0;i<=4;i++){ const v=yMin+i/4*(yMax-yMin), y=Y(v);
+    cx.beginPath(); cx.moveTo(pad,y); cx.lineTo(W-6,y); cx.stroke(); cx.fillText(Math.round(v)+'°',2,y+3); }
+  cx.fillText('0',pad-2,H-12); cx.fillText(fmtTimeShort(tMax),W-26,H-12);
+  const line=(arr,color)=>{ cx.strokeStyle=color; cx.lineWidth=1.8; cx.beginPath();
+    for(let i=0;i<arr.length;i++){ const x=X(hist.t[i]), y=Y(arr[i]); i?cx.lineTo(x,y):cx.moveTo(x,y); } cx.stroke(); };
+  if(hist.t.length>1){ line(hist.lee,'#ffb454'); line(hist.wind,'#4ea1ff'); line(hist.core,'#ff5a47'); }
 }
 
 // ============================================================
-//  メインループ
+//  ループ
 // ============================================================
 let clock;
 function animate(){
   requestAnimationFrame(animate);
-  const realDt = Math.min(clock.getDelta(), 0.05);
-
+  const realDt=Math.min(clock.getDelta(), 0.05);
   if(playing && !settled){
-    advance(P.speed * realDt);
-    sample();
-    if(coreTemp() - P.ambT < 0.5){ settled = true; playing = false; setPlay(false); }
+    advance(P.speed*realDt); sample();
+    if(coreTemp()-P.ambT<0.5){ settled=true; setPlay(false); }
   }
+  // 送風アロー（流れ表現）
+  const tw=performance.now()/1000;
+  for(const a of windArrows){ const off=((tw*0.5+a.userData.phase)%1)*0.28; a.position.x=a.userData.baseX+off; }
 
-  recolor();
-  controls.update();
-  renderer.render(scene, camera);
-
-  const now = performance.now();
-  if(now - lastStat > 100){ updateStats(); lastStat = now; }
-  if(now - lastChart > 120){ drawChart(); lastChart = now; }
+  recolor(); controls.update(); renderer.render(scene,camera);
+  const now=performance.now();
+  if(now-lastStat>100){ updateStats(); lastStat=now; }
+  if(now-lastChart>120){ drawChart(); lastChart=now; }
 }
 
-// ============================================================
-//  起動
-// ============================================================
 function start(){
-  initThree();
-  bindUI();
-  buildModel(true);
-  resetView();
+  initThree(); bindUI(); buildModel(true); resetView();
   updateStats(); drawChart(); updateState();
-  clock = new THREE.Clock();
-  animate();
-  document.getElementById('loading').style.display = 'none';
-  window.__simReady = true;
+  clock=new THREE.Clock(); animate();
+  document.getElementById('loading').style.display='none';
+  window.__simReady=true;
 }
-
 try { start(); }
 catch(err){
   console.error(err);
-  document.getElementById('loading').innerHTML =
-    '<div style="color:#ff7a59">初期化に失敗しました</div>' +
-    '<small>' + (err && err.message ? err.message : err) +
-    '<br>インターネット接続（CDN: unpkg.com）をご確認ください。</small>';
+  document.getElementById('loading').innerHTML=
+    '<div style="color:#ff7a59">初期化に失敗しました</div><small>'+
+    (err&&err.message?err.message:err)+'<br>インターネット接続（CDN: unpkg.com）をご確認ください。</small>';
 }
 </script>
 </body>
