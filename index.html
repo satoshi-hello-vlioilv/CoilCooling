@@ -150,9 +150,10 @@
     <label>送風 強さ（風上面）<b></b></label>
     <select id="selCooling">
       <option value="8">自然対流（ほぼ無風）</option>
-      <option value="40">送風（弱）</option>
-      <option value="90" selected>送風（標準）</option>
-      <option value="250">ミスト送風（強）</option>
+      <option value="20" selected>微風（既定・約30h）</option>
+      <option value="45">送風（弱）</option>
+      <option value="120">送風（強）</option>
+      <option value="350">ミスト送風</option>
     </select>
   </div>
   <div class="row">
@@ -165,6 +166,29 @@
   <div class="row"><label>外周面 係数<b id="valFO">0.80</b></label><input id="rngFO" type="range" min="0" max="1.5" step="0.05" value="0.8"></div>
   <div class="row"><label>巻芯面 係数<b id="valFB">0.70</b></label><input id="rngFB" type="range" min="0" max="1.5" step="0.05" value="0.7"></div>
   <div class="row"><label>風下面 係数<b id="valFL">0.30</b></label><input id="rngFL" type="range" min="0" max="1.5" step="0.05" value="0.3"></div>
+
+  <div class="hr"></div>
+  <h2>複数コイル（直列送風）</h2>
+  <div class="row">
+    <label>コイル列数（風の通り道）<b id="valNC">1 個</b></label>
+    <select id="selNC">
+      <option value="1" selected>1 個</option>
+      <option value="2">2 個</option>
+      <option value="3">3 個</option>
+      <option value="4">4 個</option>
+      <option value="5">5 個</option>
+      <option value="6">6 個</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>送風 風量 ṁ<b id="valMdot">8 kg/s</b></label>
+    <input id="rngMdot" type="range" min="2" max="80" step="1" value="8">
+    <div class="hint">下流ほど上流で温まった空気を受け、冷えにくくなります（風量が小さいほど顕著）。</div>
+  </div>
+  <div class="row">
+    <label>完了判定温度<b id="valDone">60 °C</b></label>
+    <input id="rngDone" type="range" min="30" max="150" step="5" value="60">
+  </div>
 
   <div class="hr"></div>
   <h2>コイル寸法</h2>
@@ -190,6 +214,7 @@
   <div class="stat"><span>風上面 温度</span><b id="stWind">—</b></div>
   <div class="stat"><span>風下面 温度</span><b id="stLee">—</b></div>
   <div class="stat"><span>平均温度</span><b id="stAvg">—</b></div>
+  <div class="stat"><span>完了（全数≤<span id="doneLbl">60</span>°C）</span><b id="stDone" style="font-size:13px">—</b></div>
   <div class="hr" style="margin:9px 0"></div>
   <div class="stat" style="font-size:11px"><span style="color:var(--accent)">放熱内訳（瞬時）</span><span style="color:var(--muted)">kW</span></div>
   <div class="stat"><span>風上面</span><b id="qWind" style="font-size:13px">—</b></div>
@@ -208,14 +233,14 @@
 
 <div id="chartWrap" class="panel">
   <div class="ct">
-    <span>温度推移</span>
-    <span class="lg">
+    <span id="chartTitle">温度推移</span>
+    <span class="lg" id="chartLg">
       <span><i style="background:#ff5a47"></i>中心</span>
       <span><i style="background:#4ea1ff"></i>風上面</span>
       <span><i style="background:#ffb454"></i>風下面</span>
     </span>
   </div>
-  <canvas id="chart" width="290" height="150"></canvas>
+  <canvas id="chart" width="320" height="175"></canvas>
 </div>
 
 <script type="importmap">
@@ -270,40 +295,47 @@ function colormap(t){
 //  シミュレーション状態（2次元 r×z 軸対称）
 // ============================================================
 const P = {
-  initT:350, ambT:25, emis:0.20, kr:3.0, kz:160, h:90,
+  initT:350, ambT:25, emis:0.20, kr:3.0, kz:160, h:20,
   OD:1.8, ID:0.6, W:1.5, rho:2730, cp:893, speed:1800,
   fWind:1.0, fOut:0.80, fBore:0.70, fLee:0.30,   // 面別 対流係数（風上面基準）
+  nCoils:1, mdot:8, doneTemp:60,                 // 直列コイル数・送風風量[kg/s]・完了判定温度
 };
 
-let T  = new Float64Array(NR*NZ);  // T[i*NZ+j]  i:半径 j:軸(0=風上)
+// 各コイルは coils[] に保持（同一寸法・材料なので幾何定数は共有）。
+// 物理関数は「処理中コイル」を指す T/Tn/Tenv を介して動作する（useCoil で切替）。
+let T  = new Float64Array(NR*NZ);  // 処理中コイルの温度 T[i*NZ+j]  i:半径 j:軸(0=風上)
 let Tn = new Float64Array(NR*NZ);
-let simTime = 0, playing = false, settled = false;
+let Tenv = 25;                     // 処理中コイルが浴びる空気温度（有効周囲温度）
+let coils = [];                    // {T,Tn,Tenv,mesh,colorAttr,xc,doneTime}
+let nCoils = 1, spacing = 0;
+let simTime = 0, playing = false, settled = false, allDoneTime = null;
 
 let rIn, rOut, dr, dz;
-const rf     = new Float64Array(NR+1);  // 半径境界
-const Voli   = new Float64Array(NR);    // セル体積（軸スライス）
-const AzArea = new Float64Array(NR);    // 端面(環状)面積＝軸方向 伝熱面積
-const ArFace = new Float64Array(NR+1);  // 半径方向 伝熱面積（軸スライス）
+const rf     = new Float64Array(NR+1);
+const Voli   = new Float64Array(NR);
+const AzArea = new Float64Array(NR);
+const ArFace = new Float64Array(NR+1);
 let sumVoli = 0, sumAz = 0;
 
 let legendMin = 25, legendMax = 350;
-let hist = { t:[], core:[], wind:[], lee:[] };
+let hist = { t:[], cores:[[]], wind:[], lee:[] };
 
 const idx = (i,j)=> i*NZ + j;
+const useCoil = c => { T=c.T; Tn=c.Tn; Tenv=c.Tenv; };
 
 // ============================================================
 //  物理
 // ============================================================
 function surfLoss(Tc, h, A){
-  const Tk=Tc+273.15, Tak=P.ambT+273.15;
-  return (h*(Tc-P.ambT) + P.emis*SIGMA*(Tk*Tk*Tk*Tk - Tak*Tak*Tak*Tak))*A;
+  const Tk=Tc+273.15, Tak=Tenv+273.15;
+  return (h*(Tc-Tenv) + P.emis*SIGMA*(Tk*Tk*Tk*Tk - Tak*Tak*Tak*Tak))*A;
 }
 function hRad(Tc){
-  const Tk=Tc+273.15, Tak=P.ambT+273.15;
+  const Tk=Tc+273.15, Tak=Tenv+273.15;
   return P.emis*SIGMA*(Tk+Tak)*(Tk*Tk+Tak*Tak);
 }
 
-function stableDt(){
+function stableDt(){   // 処理中コイル(T,Tenv)の安定 dt
   let dtMin = Infinity;
   for(let i=0;i<NR;i++){
     const C = P.rho*P.cp*Voli[i];
@@ -320,8 +352,9 @@ function stableDt(){
   }
   return Math.max(1e-4, 0.5*dtMin);
 }
+function stableDtAll(){ let m=Infinity; for(const c of coils){ useCoil(c); m=Math.min(m, stableDt()); } return m; }
 
-function step(dt){
+function step(dt){   // 処理中コイル(T,Tn,Tenv)を1ステップ更新
   for(let i=0;i<NR;i++){
     const C = P.rho*P.cp*Voli[i];
     for(let j=0;j<NZ;j++){
@@ -343,15 +376,41 @@ function step(dt){
   const tmp=T; T=Tn; Tn=tmp;
 }
 
-function advance(target){
-  let r=target, c=0; const dts=stableDt();
-  while(r>1e-9 && c<MAX_SUBSTEPS){ const dt=Math.min(dts,r); step(dt); simTime+=dt; r-=dt; c++; }
+// 対流のみの放熱[W]（空気へ渡る分。放射は除く）。処理中コイル T,Tenv で評価。
+function convLoss(){
+  let q=0;
+  for(let i=0;i<NR;i++){
+    q += P.h*P.fWind*(T[idx(i,0)]   -Tenv)*AzArea[i];
+    q += P.h*P.fLee *(T[idx(i,NZ-1)]-Tenv)*AzArea[i];
+  }
+  for(let j=0;j<NZ;j++){
+    q += P.h*P.fOut *(T[idx(NR-1,j)]-Tenv)*ArFace[NR];
+    q += P.h*P.fBore*(T[idx(0,j)]   -Tenv)*ArFace[0];
+  }
+  return q;
+}
+// 直列送風：風上から順に、上流で温まった空気が下流コイルへ。各コイルの Tenv を更新。
+function updateAir(){
+  let air = P.ambT;
+  const Cair = Math.max(1, P.mdot*1005);   // 空気の熱容量流量 [W/K]
+  for(const c of coils){ c.Tenv = air; useCoil(c); air += convLoss()/Cair; }
 }
 
-// 集計
+function advance(target){
+  let r=target, c=0;
+  while(r>1e-9 && c<MAX_SUBSTEPS){
+    updateAir();
+    const dt=Math.min(stableDtAll(), r);
+    for(const co of coils){ useCoil(co); step(dt); co.T=T; co.Tn=Tn; }
+    simTime+=dt; r-=dt; c++;
+  }
+}
+
+// 集計（処理中コイル T に対して）
 function coreTemp(){ let m=-Infinity; for(let k=0;k<T.length;k++) if(T[k]>m) m=T[k]; return m; }
 function faceAvg(j){ let s=0; for(let i=0;i<NR;i++) s+=T[idx(i,j)]*AzArea[i]; return s/sumAz; }
 function avgTemp(){ let s=0; for(let i=0;i<NR;i++) for(let j=0;j<NZ;j++) s+=T[idx(i,j)]*Voli[i]; return s/(sumVoli*NZ); }
+function maxCoreAll(){ let m=-Infinity; for(const c of coils){ useCoil(c); const v=coreTemp(); if(v>m)m=v; } return m; }
 
 // 面ごとの放熱量 [W]（対流＋放射）。内訳の可視化用。
 function heatBreakdown(){
@@ -381,14 +440,16 @@ function tempAt(r, ax){
 // ============================================================
 //  Three.js
 // ============================================================
-let renderer, scene, camera, controls, grid, mesh, geo, colorAttr;
-let vR=[], vX=[];          // 各頂点の (半径, 軸位置)
+let renderer, scene, camera, controls, grid, coilMat=null;
+let coilMeshes=[];         // 各コイルの Mesh
+let vR=[], vX=[];          // 各頂点の (半径, 軸位置) ※全コイル共通
 let windGroup;             // 送風（流体的な流れ）表示グループ
 let flow = null;           // 流れの状態 {mesh, lines, label, streams, pSL, pU, perSL}
 const _UP = new THREE.Vector3(0,1,0);
 const _v0 = new THREE.Vector3(), _dir = new THREE.Vector3();
 const _obj = new THREE.Object3D(), _col = new THREE.Color();
 const FLOW_BASE = new THREE.Color(0x8fe3ff);
+const COIL_COLORS = ['#4ea1ff','#54d68a','#ffcf5c','#ff7a59','#c879ff','#ff5a9e'];
 let sectionCut = false;    // 既定はフル円筒（切り欠きなし）
 const A_GAP = 70, A_START = 80*DEG;  // 断面表示時の切り欠き
 
@@ -416,7 +477,7 @@ function initThree(){
 }
 function onResize(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); }
 
-// 横置き（軸=X）のドーナツ型円柱。X=-W/2 が風上フラット面。
+// 横置き（軸=X）のドーナツ型円柱テンプレート（色属性付き・ローカル座標）を返す。
 function buildGeometry(){
   const positions=[], indices=[]; vR=[]; vX=[];
   const aSpan = sectionCut ? (360-A_GAP)*DEG : Math.PI*2;
@@ -453,12 +514,12 @@ function buildGeometry(){
     }
   }
 
-  geo=new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
-  colorAttr=new THREE.Float32BufferAttribute(new Float32Array(positions.length),3);
-  geo.setAttribute('color', colorAttr);
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(positions.length),3));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  return g;
 }
 
 function makeTextSprite(txt){
@@ -487,37 +548,41 @@ function buildWind(){
   const W=P.W, hw=W/2;
   const c=Math.max(0.02, rOut*0.02);
   const La=Math.max(0.45, W*0.45), Le=La;
-  const xUp=-hw-La, xPre=-hw-0.16, xFront=-hw-c, xDown=hw+Le;
   const rStag=rIn+(rOut-rIn)*0.5;                 // よどみ半径（内へ/外へ の分岐）
   const rBore=Math.max(0.02, rIn*0.85);           // 巻芯を通る半径
   const rOuter=rOut+Math.max(0.03, rOut*0.03);    // 外周を通る半径
   const SAMPLES=60;
+  const nAng  = nCoils>=4 ? 3 : nCoils>=2 ? 4 : 6;   // コイル数が多いほど間引く
+  const perSL = nCoils>=4 ? 2 : 3;
 
-  // (x,ρ) 制御点を角度θで3D化し CatmullRom 曲線へ → 等間隔サンプル
-  function makeStream(ctrl2d, th){
-    const cps=ctrl2d.map(([x,r])=> new THREE.Vector3(x, r*Math.cos(th), r*Math.sin(th)));
+  // (x,ρ) 制御点を 列位置 xc だけずらし、角度θで3D化 → CatmullRom → 等間隔サンプル
+  function makeStream(ctrl2d, th, xc){
+    const cps=ctrl2d.map(([x,r])=> new THREE.Vector3(x+xc, r*Math.cos(th), r*Math.sin(th)));
     const curve=new THREE.CatmullRomCurve3(cps, false, 'catmullrom', 0.5);
     return { pts: curve.getSpacedPoints(SAMPLES), len: Math.max(1e-3, curve.getLength()) };
   }
 
   const streams=[];
-  const nAng=6;
-  for(let a=0;a<nAng;a++){
-    const th=a*2*Math.PI/nAng;
-    // ① 巻芯(内周)を通り抜ける
-    for(const r0 of [rIn*0.45, rIn*0.8])
-      streams.push(makeStream([[xUp,r0],[xPre,r0],[-hw,r0],[hw,r0],[xDown,r0]], th+0.05));
-    // ② 外周を通り抜ける（肩で少し膨らむ）
-    for(const r0 of [rOut*1.05, rOut*1.14])
-      streams.push(makeStream([[xUp,r0],[xPre,r0],[-hw,r0+0.03],[0,r0+0.015],[hw,r0+0.02],[xDown,r0]], th+0.5));
-    // ③ 端面に当たり内へ曲がって巻芯へ
-    for(const r0 of [rIn+(rStag-rIn)*0.4, rIn+(rStag-rIn)*0.8])
-      streams.push(makeStream([[xUp,r0],[xPre,r0],[xFront,r0],[xFront,(r0+rIn)/2],[xFront,rIn],
-                               [-hw+0.03,rBore],[0,rBore],[hw,rBore],[xDown,rBore]], th+0.27));
-    // ④ 端面に当たり外へ曲がって外周へ
-    for(const r0 of [rStag+(rOut-rStag)*0.25, rStag+(rOut-rStag)*0.65])
-      streams.push(makeStream([[xUp,r0],[xPre,r0],[xFront,r0],[xFront,(r0+rOut)/2],[xFront,rOut],
-                               [-hw+0.03,rOuter],[0,rOuter],[hw,rOuter],[xDown,rOuter]], th+0.8));
+  for(let ci=0; ci<nCoils; ci++){
+    const xc=(ci-(nCoils-1)/2)*spacing;
+    const xUp=-hw-La, xPre=-hw-0.16, xFront=-hw-c, xDown=hw+Le;
+    for(let a=0;a<nAng;a++){
+      const th=a*2*Math.PI/nAng;
+      // ① 巻芯(内周)を通り抜ける
+      for(const r0 of [rIn*0.45, rIn*0.8])
+        streams.push(makeStream([[xUp,r0],[xPre,r0],[-hw,r0],[hw,r0],[xDown,r0]], th+0.05, xc));
+      // ② 外周を通り抜ける（肩で少し膨らむ）
+      for(const r0 of [rOut*1.05, rOut*1.14])
+        streams.push(makeStream([[xUp,r0],[xPre,r0],[-hw,r0+0.03],[0,r0+0.015],[hw,r0+0.02],[xDown,r0]], th+0.5, xc));
+      // ③ 端面に当たり内へ曲がって巻芯へ
+      for(const r0 of [rIn+(rStag-rIn)*0.4, rIn+(rStag-rIn)*0.8])
+        streams.push(makeStream([[xUp,r0],[xPre,r0],[xFront,r0],[xFront,(r0+rIn)/2],[xFront,rIn],
+                                 [-hw+0.03,rBore],[0,rBore],[hw,rBore],[xDown,rBore]], th+0.27, xc));
+      // ④ 端面に当たり外へ曲がって外周へ
+      for(const r0 of [rStag+(rOut-rStag)*0.25, rStag+(rOut-rStag)*0.65])
+        streams.push(makeStream([[xUp,r0],[xPre,r0],[xFront,r0],[xFront,(r0+rOut)/2],[xFront,rOut],
+                                 [-hw+0.03,rOuter],[0,rOuter],[hw,rOuter],[xDown,rOuter]], th+0.8, xc));
+    }
   }
 
   // 流線ガイド（淡色のライン）
@@ -532,7 +597,7 @@ function buildWind(){
   const cone=new THREE.ConeGeometry(size*0.16, size, 6);   // 半径を細く＝先端を小さく
   cone.translate(0, -size*0.2, 0);
   const pmat=new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
-  const perSL=3, total=streams.length*perSL;
+  const total=streams.length*perSL;
   const mesh=new THREE.InstancedMesh(cone, pmat, total);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   const pSL=new Int16Array(total), pU=new Float32Array(total);
@@ -540,9 +605,10 @@ function buildWind(){
   for(let s=0;s<streams.length;s++) for(let p=0;p<perSL;p++){ pSL[k]=s; pU[k]=((p/perSL)+(s*0.13))%1; k++; }
   windGroup.add(mesh);
 
-  // ラベル
+  // ラベル（風上端・先頭コイルの手前）
+  const xc0=(0-(nCoils-1)/2)*spacing;
   const lab=makeTextSprite('送風 ▶'); const ls=Math.max(0.7, rOut*0.9); lab.scale.set(ls, ls*0.4, 1);
-  lab.position.set(xUp+0.1, rOut+0.28, 0); windGroup.add(lab);
+  lab.position.set(xc0-hw-La+0.1, rOut+0.28, 0); windGroup.add(lab);
 
   flow={ mesh, lines, label:lab, streams, pSL, pU, perSL };
   scene.add(windGroup);
@@ -584,42 +650,68 @@ function buildModel(resetTemps){
     sumVoli+=Voli[i]; sumAz+=AzArea[i];
   }
 
+  const newN=P.nCoils;
+  const keep=(!resetTemps && coils.length===newN);   // 断面切替などは温度を保持
+  const oldTs   = keep ? coils.map(c=>c.T) : null;
+  const oldDone = keep ? coils.map(c=>c.doneTime) : null;
+
+  // 既存メッシュ破棄
+  for(const m of coilMeshes){ scene.remove(m); m.geometry.dispose(); }
+  coilMeshes=[];
+  if(coilMat) coilMat.dispose();
+  coilMat=new THREE.MeshStandardMaterial({vertexColors:true, metalness:0.12, roughness:0.62, side:THREE.DoubleSide});
+
+  nCoils=newN; spacing=P.W*1.6;
+  const template=buildGeometry();
+  coils=[];
+  for(let k=0;k<nCoils;k++){
+    const xc=(k-(nCoils-1)/2)*spacing;
+    const gk=template.clone();
+    const m=new THREE.Mesh(gk, coilMat); m.position.x=xc; scene.add(m); coilMeshes.push(m);
+    const Tk = oldTs ? oldTs[k] : new Float64Array(NR*NZ).fill(P.initT);
+    coils.push({ T:Tk, Tn:new Float64Array(NR*NZ), Tenv:P.ambT, mesh:m,
+                 colorAttr:gk.getAttribute('color'), xc, doneTime: oldDone?oldDone[k]:null });
+  }
+  template.dispose();
+
   if(resetTemps){
-    T.fill(P.initT);
-    simTime=0; settled=false;
-    hist={t:[],core:[],wind:[],lee:[]};
+    simTime=0; settled=false; allDoneTime=null;
+    hist={ t:[], cores:Array.from({length:nCoils},()=>[]), wind:[], lee:[] };
     legendMin=P.ambT; legendMax=Math.max(P.initT, P.ambT+1);
     updateLegend();
   }
-
-  if(mesh){ scene.remove(mesh); geo.dispose(); }
-  buildGeometry();
-  const mat=new THREE.MeshStandardMaterial({vertexColors:true, metalness:0.12, roughness:0.62, side:THREE.DoubleSide});
-  mesh=new THREE.Mesh(geo, mat); scene.add(mesh);
+  if(hist.cores.length!==nCoils) hist={ t:[], cores:Array.from({length:nCoils},()=>[]), wind:[], lee:[] };
 
   if(grid) scene.remove(grid);
-  const span=Math.ceil(Math.max(P.OD,P.W)*1.7);
-  grid=new THREE.GridHelper(span*2, span*2, 0x2a3650, 0x18202f);
+  const rowHalf=(nCoils-1)/2*spacing + P.W/2;
+  const span=Math.ceil(Math.max(rowHalf*2, P.OD)*1.2);
+  grid=new THREE.GridHelper(span*2, Math.min(140, span*2), 0x2a3650, 0x18202f);
   grid.position.y=-rOut-0.02; scene.add(grid);
 
   buildWind();
+  updateChartHeader();
   recolor();
 }
 
 function resetView(){
-  const d=Math.max(P.OD,P.W)*1.9;
-  camera.position.set(-d*0.92, d*0.42, d*0.86);
+  const rowLen=(nCoils-1)*spacing + P.W;
+  const d=Math.max(rowLen, P.OD)*1.5 + P.OD*0.4;
+  camera.position.set(-d*0.85, d*0.42, d*0.80);
   controls.target.set(0,0,0); controls.update();
 }
 
 function recolor(){
   const inv=1/(legendMax-legendMin);
-  for(let v=0; v<vR.length; v++){
-    const Tc=tempAt(vR[v], vX[v]);
-    const c=colormap((Tc-legendMin)*inv);
-    colorAttr.setXYZ(v, c[0], c[1], c[2]);
+  for(const c of coils){
+    useCoil(c);
+    const ca=c.colorAttr;
+    for(let v=0; v<vR.length; v++){
+      const Tc=tempAt(vR[v], vX[v]);
+      const col=colormap((Tc-legendMin)*inv);
+      ca.setXYZ(v, col[0], col[1], col[2]);
+    }
+    ca.needsUpdate=true;
   }
-  colorAttr.needsUpdate=true;
 }
 
 // ============================================================
@@ -646,7 +738,7 @@ function setPlay(on){
 }
 function updateState(){
   const el=$('state');
-  if(settled){ el.textContent='✓ 冷却完了（平衡）'; el.className='done'; }
+  if(settled){ el.textContent='✓ 全数 '+P.doneTemp+'°C 到達'; el.className='done'; }
   else if(playing){ el.textContent='● 冷却中…'; el.className='cooling'; }
   else { el.textContent='一時停止中'; el.className='paused'; }
 }
@@ -695,10 +787,18 @@ function bindUI(){
   $('rngW').oninput =e=>{ P.W =parseFloat(e.target.value)/1000; $('valW').textContent =Math.round(P.W*1000)+' mm'; updateDimHint(); };
   for(const id of ['rngOD','rngID','rngW']) $(id).onchange=()=>{ buildModel(true); resetView(); drawChart(); updateStats(); };
 
+  $('selNC').onchange=e=>{ P.nCoils=parseInt(e.target.value); $('valNC').textContent=P.nCoils+' 個';
+    buildModel(true); resetView(); drawChart(); updateStats(); };
+  $('rngMdot').oninput=e=>{ P.mdot=parseFloat(e.target.value); $('valMdot').textContent=P.mdot+' kg/s'; };
+  $('rngDone').oninput=e=>{ P.doneTemp=parseFloat(e.target.value); $('valDone').textContent=P.doneTemp+' °C'; $('doneLbl').textContent=P.doneTemp; drawChart(); };
+
   $('valAlloy').textContent=ALLOYS['3003'].name;
   $('rngKr').value=logPos(K_MIN,K_MAX,P.kr); $('valKr').textContent=P.kr.toFixed(1)+' W/mK';
   $('rngKz').value=logPos(K_MIN,K_MAX,P.kz); $('valKz').textContent=Math.round(P.kz)+' W/mK';
   $('rngH').value =logPos(H_MIN,H_MAX,P.h);  $('valH').textContent =Math.round(P.h)+' W/m²K';
+  $('valNC').textContent=P.nCoils+' 個';
+  $('valMdot').textContent=P.mdot+' kg/s';
+  $('valDone').textContent=P.doneTemp+' °C'; $('doneLbl').textContent=P.doneTemp;
   updateDimHint();
 }
 function updateDimHint(){
@@ -712,20 +812,42 @@ function updateDimHint(){
 let lastStat=0, lastChart=0;
 function updateStats(){
   $('stTime').textContent=fmtTime(simTime);
-  $('stCore').textContent=coreTemp().toFixed(1)+' °C';
+  let maxCore=-Infinity, sumAvg=0;
+  for(const c of coils){ useCoil(c); const cv=coreTemp(); if(cv>maxCore)maxCore=cv; sumAvg+=avgTemp(); }
+  $('stCore').textContent=maxCore.toFixed(1)+' °C';
+  $('stAvg').textContent =(sumAvg/nCoils).toFixed(1)+' °C';
+  useCoil(coils[0]);
   $('stWind').textContent=faceAvg(0).toFixed(1)+' °C';
   $('stLee').textContent =faceAvg(NZ-1).toFixed(1)+' °C';
-  $('stAvg').textContent =avgTemp().toFixed(1)+' °C';
   const q=heatBreakdown();
   $('qWind').textContent=(q.wind/1000).toFixed(1);
   $('qOut').textContent =(q.out/1000).toFixed(1);
   $('qBore').textContent=(q.bore/1000).toFixed(1);
   $('qLee').textContent =(q.lee/1000).toFixed(1);
   $('qTot').textContent =(q.total/1000).toFixed(1);
+  $('stDone').textContent = allDoneTime!=null ? fmtTime(allDoneTime) : '—';
+  $('doneLbl').textContent = P.doneTemp;
 }
 function sample(){
-  hist.t.push(simTime); hist.core.push(coreTemp()); hist.wind.push(faceAvg(0)); hist.lee.push(faceAvg(NZ-1));
-  if(hist.t.length>1400){ for(const k of ['t','core','wind','lee']){ const a=hist[k], b=[]; for(let i=0;i<a.length;i+=2) b.push(a[i]); hist[k]=b; } }
+  hist.t.push(simTime);
+  for(let k=0;k<nCoils;k++){ useCoil(coils[k]); hist.cores[k].push(coreTemp()); }
+  useCoil(coils[0]); hist.wind.push(faceAvg(0)); hist.lee.push(faceAvg(NZ-1));
+  if(hist.t.length>1400){
+    const dec=a=>{ const b=[]; for(let i=0;i<a.length;i+=2) b.push(a[i]); return b; };
+    hist.t=dec(hist.t); hist.wind=dec(hist.wind); hist.lee=dec(hist.lee);
+    for(let k=0;k<nCoils;k++) hist.cores[k]=dec(hist.cores[k]);
+  }
+}
+function coilColor(k){ return COIL_COLORS[k % COIL_COLORS.length]; }
+function updateChartHeader(){
+  if(nCoils===1){
+    $('chartTitle').textContent='温度推移';
+    $('chartLg').innerHTML='<span><i style="background:#ff5a47"></i>中心</span><span><i style="background:#4ea1ff"></i>風上面</span><span><i style="background:#ffb454"></i>風下面</span>';
+  } else {
+    $('chartTitle').textContent='各コイル 中心温度';
+    let h=''; for(let k=0;k<nCoils;k++) h+=`<span><i style="background:${coilColor(k)}"></i>${k+1}</span>`;
+    $('chartLg').innerHTML=h;
+  }
 }
 const chart=$('chart'), cx=chart.getContext('2d');
 function drawChart(){
@@ -738,9 +860,21 @@ function drawChart(){
   for(let i=0;i<=4;i++){ const v=yMin+i/4*(yMax-yMin), y=Y(v);
     cx.beginPath(); cx.moveTo(pad,y); cx.lineTo(W-6,y); cx.stroke(); cx.fillText(Math.round(v)+'°',2,y+3); }
   cx.fillText('0',pad-2,H-12); cx.fillText(fmtTimeShort(tMax),W-26,H-12);
-  const line=(arr,color)=>{ cx.strokeStyle=color; cx.lineWidth=1.8; cx.beginPath();
+  // 完了判定温度ライン
+  const yd=Y(P.doneTemp);
+  if(yd>2 && yd<H-2){ cx.strokeStyle='rgba(120,230,160,.55)'; cx.setLineDash([4,3]); cx.lineWidth=1;
+    cx.beginPath(); cx.moveTo(pad,yd); cx.lineTo(W-6,yd); cx.stroke(); cx.setLineDash([]);
+    cx.fillStyle='#54d68a'; cx.fillText(P.doneTemp+'°C', pad+3, yd-3); }
+  const line=(arr,color,w)=>{ cx.strokeStyle=color; cx.lineWidth=w; cx.beginPath();
     for(let i=0;i<arr.length;i++){ const x=X(hist.t[i]), y=Y(arr[i]); i?cx.lineTo(x,y):cx.moveTo(x,y); } cx.stroke(); };
-  if(hist.t.length>1){ line(hist.lee,'#ffb454'); line(hist.wind,'#4ea1ff'); line(hist.core,'#ff5a47'); }
+  if(hist.t.length>1){
+    if(nCoils===1){ line(hist.lee,'#ffb454',1.8); line(hist.wind,'#4ea1ff',1.8); line(hist.cores[0],'#ff5a47',1.8); }
+    else { for(let k=0;k<nCoils;k++) line(hist.cores[k], coilColor(k), 1.6); }
+  }
+  if(nCoils>1 && allDoneTime!=null){
+    cx.fillStyle='#54d68a'; cx.font='bold 10px sans-serif';
+    cx.fillText('全数到達 '+fmtTimeShort(allDoneTime), W-96, 11);
+  }
 }
 
 // ============================================================
@@ -752,7 +886,8 @@ function animate(){
   const realDt=Math.min(clock.getDelta(), 0.05);
   if(playing && !settled){
     advance(P.speed*realDt); sample();
-    if(coreTemp()-P.ambT<0.5){ settled=true; setPlay(false); }
+    for(let k=0;k<nCoils;k++){ if(coils[k].doneTime==null){ useCoil(coils[k]); if(coreTemp()<=P.doneTemp) coils[k].doneTime=simTime; } }
+    if(maxCoreAll()<=P.doneTemp){ allDoneTime=simTime; settled=true; setPlay(false); }
   }
   // 送風（流体的な流れ）アニメーション
   updateFlow(realDt);
