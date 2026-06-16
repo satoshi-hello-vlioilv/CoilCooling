@@ -158,8 +158,13 @@
   <div class="row">
     <label>熱伝達係数 h（風上面）<b id="valH">90 W/m²K</b></label>
     <input id="rngH" type="range" min="0" max="1000" step="1" value="0">
-    <div class="hint">片側のフラット面（風上面）に当たる風の強さ。風下面・外周・巻芯はこれより弱い係数で冷却します。</div>
+    <div class="hint">片側フラット面（風上面）に直接当たる風の強さ。下の係数で各面の対流の強さを調整します。</div>
   </div>
+  <div class="hint" style="margin:8px 0 2px">面別 対流係数（風上面=基準の比）<br>※同じ値でも、半径方向 k<sub>r</sub> が低いと外周/巻芯の放熱は端面より小さくなります（伝導律速）。</div>
+  <div class="row"><label>風上面 係数<b id="valFW">1.00</b></label><input id="rngFW" type="range" min="0" max="1.5" step="0.05" value="1.0"></div>
+  <div class="row"><label>外周面 係数<b id="valFO">0.80</b></label><input id="rngFO" type="range" min="0" max="1.5" step="0.05" value="0.8"></div>
+  <div class="row"><label>巻芯面 係数<b id="valFB">0.70</b></label><input id="rngFB" type="range" min="0" max="1.5" step="0.05" value="0.7"></div>
+  <div class="row"><label>風下面 係数<b id="valFL">0.30</b></label><input id="rngFL" type="range" min="0" max="1.5" step="0.05" value="0.3"></div>
 
   <div class="hr"></div>
   <h2>コイル寸法</h2>
@@ -185,6 +190,13 @@
   <div class="stat"><span>風上面 温度</span><b id="stWind">—</b></div>
   <div class="stat"><span>風下面 温度</span><b id="stLee">—</b></div>
   <div class="stat"><span>平均温度</span><b id="stAvg">—</b></div>
+  <div class="hr" style="margin:9px 0"></div>
+  <div class="stat" style="font-size:11px"><span style="color:var(--accent)">放熱内訳（瞬時）</span><span style="color:var(--muted)">kW</span></div>
+  <div class="stat"><span>風上面</span><b id="qWind" style="font-size:13px">—</b></div>
+  <div class="stat"><span>外周面</span><b id="qOut" style="font-size:13px">—</b></div>
+  <div class="stat"><span>巻芯面</span><b id="qBore" style="font-size:13px">—</b></div>
+  <div class="stat"><span>風下面</span><b id="qLee" style="font-size:13px">—</b></div>
+  <div class="stat"><span>合計</span><b id="qTot" style="font-size:13px">—</b></div>
   <div id="state" class="paused">一時停止中</div>
 </div>
 
@@ -228,11 +240,9 @@ const NZ = 16;                    // 幅(軸)方向 セル数
 const MAX_SUBSTEPS = 3000;        // 1フレーム最大計算ステップ
 const DEG = Math.PI / 180;
 
-// 非対称な冷却係数（風上面=1.0 を基準とした比率）
-const F_WIND = 1.0;   // 風上フラット面（軸 -X）
-const F_LEE  = 0.25;  // 風下フラット面（後流）
-const F_OUT  = 0.55;  // 外周面（風が回り込む）
-const F_BORE = 0.40;  // 内周面（巻芯・眼）
+// 面別の対流の強さ（風上面の値を基準とした比）。既定値は P 内（UIで調整可）。
+//  風上面=直接衝突(impingement)で最大、外周/巻芯=偏向流が washing、風下面=後流で最小。
+//  ※ 同じ係数でも、半径方向 kr が低いと外周/巻芯の放熱は端面より小さくなる（伝導律速）。
 
 // 合金物性（ρ:密度, cp:比熱, kz:幅方向＝無垢材 熱伝導率）
 const ALLOYS = {
@@ -262,6 +272,7 @@ function colormap(t){
 const P = {
   initT:350, ambT:25, emis:0.20, kr:3.0, kz:160, h:90,
   OD:1.8, ID:0.6, W:1.5, rho:2730, cp:893, speed:1800,
+  fWind:1.0, fOut:0.80, fBore:0.70, fLee:0.30,   // 面別 対流係数（風上面基準）
 };
 
 let T  = new Float64Array(NR*NZ);  // T[i*NZ+j]  i:半径 j:軸(0=風上)
@@ -299,10 +310,10 @@ function stableDt(){
     for(let j=0;j<NZ;j++){
       const hr = hRad(T[idx(i,j)]);
       let G = 0;
-      G += (i>0)    ? P.kr*ArFace[i]/dr    : (P.h*F_BORE+hr)*ArFace[0];
-      G += (i<NR-1) ? P.kr*ArFace[i+1]/dr  : (P.h*F_OUT +hr)*ArFace[NR];
-      G += (j>0)    ? P.kz*AzArea[i]/dz    : (P.h*F_WIND+hr)*AzArea[i];
-      G += (j<NZ-1) ? P.kz*AzArea[i]/dz    : (P.h*F_LEE +hr)*AzArea[i];
+      G += (i>0)    ? P.kr*ArFace[i]/dr    : (P.h*P.fBore+hr)*ArFace[0];
+      G += (i<NR-1) ? P.kr*ArFace[i+1]/dr  : (P.h*P.fOut +hr)*ArFace[NR];
+      G += (j>0)    ? P.kz*AzArea[i]/dz    : (P.h*P.fWind+hr)*AzArea[i];
+      G += (j<NZ-1) ? P.kz*AzArea[i]/dz    : (P.h*P.fLee +hr)*AzArea[i];
       const dti = C/G;
       if(dti<dtMin) dtMin = dti;
     }
@@ -318,14 +329,14 @@ function step(dt){
       let Q = 0;
       // 半径方向
       if(i>0)    Q += P.kr*ArFace[i]  *(T[idx(i-1,j)]-t0)/dr;
-      else       Q -= surfLoss(t0, P.h*F_BORE, ArFace[0]);
+      else       Q -= surfLoss(t0, P.h*P.fBore, ArFace[0]);
       if(i<NR-1) Q += P.kr*ArFace[i+1]*(T[idx(i+1,j)]-t0)/dr;
-      else       Q -= surfLoss(t0, P.h*F_OUT,  ArFace[NR]);
+      else       Q -= surfLoss(t0, P.h*P.fOut,  ArFace[NR]);
       // 幅(軸)方向
       if(j>0)    Q += P.kz*AzArea[i]*(T[idx(i,j-1)]-t0)/dz;
-      else       Q -= surfLoss(t0, P.h*F_WIND, AzArea[i]);   // 風上面
+      else       Q -= surfLoss(t0, P.h*P.fWind, AzArea[i]);   // 風上面
       if(j<NZ-1) Q += P.kz*AzArea[i]*(T[idx(i,j+1)]-t0)/dz;
-      else       Q -= surfLoss(t0, P.h*F_LEE,  AzArea[i]);   // 風下面
+      else       Q -= surfLoss(t0, P.h*P.fLee,  AzArea[i]);   // 風下面
       Tn[idx(i,j)] = t0 + dt*Q/C;
     }
   }
@@ -341,6 +352,20 @@ function advance(target){
 function coreTemp(){ let m=-Infinity; for(let k=0;k<T.length;k++) if(T[k]>m) m=T[k]; return m; }
 function faceAvg(j){ let s=0; for(let i=0;i<NR;i++) s+=T[idx(i,j)]*AzArea[i]; return s/sumAz; }
 function avgTemp(){ let s=0; for(let i=0;i<NR;i++) for(let j=0;j<NZ;j++) s+=T[idx(i,j)]*Voli[i]; return s/(sumVoli*NZ); }
+
+// 面ごとの放熱量 [W]（対流＋放射）。内訳の可視化用。
+function heatBreakdown(){
+  let qw=0, ql=0, qo=0, qb=0;
+  for(let i=0;i<NR;i++){
+    qw += surfLoss(T[idx(i,0)],    P.h*P.fWind, AzArea[i]);
+    ql += surfLoss(T[idx(i,NZ-1)], P.h*P.fLee,  AzArea[i]);
+  }
+  for(let j=0;j<NZ;j++){
+    qo += surfLoss(T[idx(NR-1,j)], P.h*P.fOut,  ArFace[NR]);
+    qb += surfLoss(T[idx(0,j)],    P.h*P.fBore, ArFace[0]);
+  }
+  return { wind:qw, lee:ql, out:qo, bore:qb, total:qw+ql+qo+qb };
+}
 
 // 半径 r・軸位置 ax における温度（双線形補間）
 function tempAt(r, ax){
@@ -661,6 +686,8 @@ function bindUI(){
   $('selCooling').onchange=e=>{ P.h=parseFloat(e.target.value);
     $('rngH').value=logPos(H_MIN,H_MAX,P.h); $('valH').textContent=Math.round(P.h)+' W/m²K'; };
   $('rngH').oninput=e=>{ P.h=logVal(H_MIN,H_MAX,parseFloat(e.target.value)); $('valH').textContent=Math.round(P.h)+' W/m²K'; };
+  const fac=(rng,val,key)=>{ $(rng).oninput=e=>{ P[key]=parseFloat(e.target.value); $(val).textContent=P[key].toFixed(2); }; };
+  fac('rngFW','valFW','fWind'); fac('rngFO','valFO','fOut'); fac('rngFB','valFB','fBore'); fac('rngFL','valFL','fLee');
 
   const clampDims=()=>{ if(P.ID>P.OD-0.2){ P.ID=P.OD-0.2; $('rngID').value=Math.round(P.ID*1000); $('valID').textContent=Math.round(P.ID*1000)+' mm'; } };
   $('rngOD').oninput=e=>{ P.OD=parseFloat(e.target.value)/1000; $('valOD').textContent=Math.round(P.OD*1000)+' mm'; clampDims(); updateDimHint(); };
@@ -689,6 +716,12 @@ function updateStats(){
   $('stWind').textContent=faceAvg(0).toFixed(1)+' °C';
   $('stLee').textContent =faceAvg(NZ-1).toFixed(1)+' °C';
   $('stAvg').textContent =avgTemp().toFixed(1)+' °C';
+  const q=heatBreakdown();
+  $('qWind').textContent=(q.wind/1000).toFixed(1);
+  $('qOut').textContent =(q.out/1000).toFixed(1);
+  $('qBore').textContent=(q.bore/1000).toFixed(1);
+  $('qLee').textContent =(q.lee/1000).toFixed(1);
+  $('qTot').textContent =(q.total/1000).toFixed(1);
 }
 function sample(){
   hist.t.push(simTime); hist.core.push(coreTemp()); hist.wind.push(faceAvg(0)); hist.lee.push(faceAvg(NZ-1));
