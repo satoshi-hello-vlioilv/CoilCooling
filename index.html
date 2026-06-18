@@ -444,11 +444,10 @@ let renderer, scene, camera, controls, grid, coilMat=null;
 let coilMeshes=[];         // 各コイルの Mesh
 let vR=[], vX=[];          // 各頂点の (半径, 軸位置) ※全コイル共通
 let windGroup;             // 送風（流体的な流れ）表示グループ
-let flow = null;           // 流れの状態 {mesh, lines, label, streams, pSL, pU, perSL}
-const _UP = new THREE.Vector3(0,1,0);
-const _v0 = new THREE.Vector3(), _dir = new THREE.Vector3();
-const _obj = new THREE.Object3D(), _col = new THREE.Color();
-const FLOW_BASE = new THREE.Color(0x8fe3ff);
+let flow = null;           // 流れの状態 {streak, guide, label, streams, sStream, sU, TAIL, gLen, posAttr, colAttr}
+const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _col = new THREE.Color();
+const FLOW_BASE = new THREE.Color(0x86dcff);   // さわやかな水色（筋の本体）
+const FLOW_HEAD = new THREE.Color(0xeafdff);   // 先頭の白寄りハイライト
 const COIL_COLORS = ['#4ea1ff','#54d68a','#ffcf5c','#ff7a59','#c879ff','#ff5a9e'];
 let sectionCut = false;    // 既定はフル円筒（切り欠きなし）
 const A_GAP = 70, A_START = 80*DEG;  // 断面表示時の切り欠き
@@ -538,8 +537,8 @@ function buildWind(){
   if(windGroup){
     scene.remove(windGroup);
     if(flow){
-      flow.mesh.geometry.dispose(); flow.mesh.material.dispose();
-      flow.lines.geometry.dispose(); flow.lines.material.dispose();
+      flow.streak.geometry.dispose(); flow.streak.material.dispose();
+      flow.guide.geometry.dispose();  flow.guide.material.dispose();
       if(flow.label){ if(flow.label.material.map) flow.label.material.map.dispose(); flow.label.material.dispose(); }
     }
   }
@@ -547,13 +546,13 @@ function buildWind(){
 
   const W=P.W, hw=W/2;
   const c=Math.max(0.02, rOut*0.02);
-  const La=Math.max(0.45, W*0.45), Le=La;
+  const La=Math.max(0.6, W*0.55), Le=La;          // 助走/後流を少し長めに（流れが見えやすい）
   const rStag=rIn+(rOut-rIn)*0.5;                 // よどみ半径（内へ/外へ の分岐）
   const rBore=Math.max(0.02, rIn*0.85);           // 巻芯を通る半径
   const rOuter=rOut+Math.max(0.03, rOut*0.03);    // 外周を通る半径
-  const SAMPLES=60;
-  const nAng  = nCoils>=4 ? 3 : nCoils>=2 ? 4 : 6;   // コイル数が多いほど間引く
-  const perSL = nCoils>=4 ? 2 : 3;
+  const SAMPLES=120;                               // 曲線を細かくサンプル＝なめらか
+  const nAng  = nCoils>=4 ? 4 : nCoils>=2 ? 5 : 7;   // 円周方向の流線本数
+  const perSL = nCoils>=4 ? 2 : 3;                    // 1流線あたりの流れる筋の数
 
   // (x,ρ) 制御点を 列位置 xc だけずらし、角度θで3D化 → CatmullRom → 等間隔サンプル
   function makeStream(ctrl2d, th, xc){
@@ -585,58 +584,77 @@ function buildWind(){
     }
   }
 
-  // 流線ガイド（淡色のライン）
+  // 流線ガイド（ごく淡いライン・流れの道筋）
   const lp=[];
-  for(const s of streams) for(let i=0;i<s.pts.length-1;i++){ const p=s.pts[i],q=s.pts[i+1]; lp.push(p.x,p.y,p.z,q.x,q.y,q.z); }
+  for(const s of streams) for(let i=0;i<s.pts.length-1;i+=2){ const p=s.pts[i], q=s.pts[Math.min(i+2,s.pts.length-1)]; lp.push(p.x,p.y,p.z,q.x,q.y,q.z); }
   const lgeo=new THREE.BufferGeometry(); lgeo.setAttribute('position', new THREE.Float32BufferAttribute(lp,3));
-  const lines=new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({color:0x4aa8d8, transparent:true, opacity:0.10, depthWrite:false}));
-  windGroup.add(lines);
+  const guide=new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({color:0x4aa8d8, transparent:true, opacity:0.05, depthWrite:false, blending:THREE.AdditiveBlending}));
+  windGroup.add(guide);
 
-  // 流れる粒子（細い円錐＝先端が小さい矢じり）InstancedMesh
-  const size=Math.min(0.14, Math.max(0.05, rOut*0.11));
-  const cone=new THREE.ConeGeometry(size*0.16, size, 6);   // 半径を細く＝先端を小さく
-  cone.translate(0, -size*0.2, 0);
-  const pmat=new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
-  const total=streams.length*perSL;
-  const mesh=new THREE.InstancedMesh(cone, pmat, total);
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  const pSL=new Int16Array(total), pU=new Float32Array(total);
+  // 流れる筋（コメット状の長い線）＝風洞のスモークライン。各筋は流線に沿う短い折れ線で、
+  //  先頭が明るく尾に向かって暗くフェード（加算合成）。毎フレーム位置を進めて流れを表現。
+  const TAIL=18;            // 筋を構成するセグメント数（多いほど長く・なめらか）
+  const gLen=0.24;          // 筋の長さ（流線全長に対する割合）＝「線が長め」
+  const totalStreaks=streams.length*perSL;
+  const vCount=totalStreaks*TAIL*2;                 // LineSegments：1セグメント=2頂点
+  const pos=new Float32Array(vCount*3), col=new Float32Array(vCount*3);
+  const sgeo=new THREE.BufferGeometry();
+  const posAttr=new THREE.BufferAttribute(pos,3), colAttr=new THREE.BufferAttribute(col,3);
+  posAttr.setUsage(THREE.DynamicDrawUsage); colAttr.setUsage(THREE.DynamicDrawUsage);
+  sgeo.setAttribute('position', posAttr); sgeo.setAttribute('color', colAttr);
+  const streak=new THREE.LineSegments(sgeo, new THREE.LineBasicMaterial({vertexColors:true, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false}));
+  streak.frustumCulled=false;
+  const sStream=new Int16Array(totalStreaks), sU=new Float32Array(totalStreaks);
   let k=0;
-  for(let s=0;s<streams.length;s++) for(let p=0;p<perSL;p++){ pSL[k]=s; pU[k]=((p/perSL)+(s*0.13))%1; k++; }
-  windGroup.add(mesh);
+  for(let s=0;s<streams.length;s++) for(let p=0;p<perSL;p++){ sStream[k]=s; sU[k]=((p/perSL)+(s*0.137))%1; k++; }
+  windGroup.add(streak);
 
   // ラベル（風上端・先頭コイルの手前）
   const xc0=(0-(nCoils-1)/2)*spacing;
   const lab=makeTextSprite('送風 ▶'); const ls=Math.max(0.7, rOut*0.9); lab.scale.set(ls, ls*0.4, 1);
   lab.position.set(xc0-hw-La+0.1, rOut+0.28, 0); windGroup.add(lab);
 
-  flow={ mesh, lines, label:lab, streams, pSL, pU, perSL };
+  flow={ streak, guide, label:lab, streams, sStream, sU, TAIL, gLen, posAttr, colAttr };
   scene.add(windGroup);
   updateFlow(0);
 }
 
 function smooth(a,b,x){ let t=(x-a)/(b-a); t=t<0?0:t>1?1:t; return t*t*(3-2*t); }
+// 流線上のパラメータ uu(0..1) の点を補間して out に格納
+function sampleAt(pts, np, uu, out){
+  if(uu<0) uu=0; else if(uu>1) uu=1;
+  const f=uu*(np-1); let ia=Math.floor(f); if(ia>=np-1) ia=np-2;
+  out.lerpVectors(pts[ia], pts[ia+1], f-ia);
+}
+// 1頂点の色を書き込む。bright:明るさ tailFrac:尾までの割合(0=先頭) → 先頭ほど白く明るい
+function writeCol(col, o, bright, tailFrac){
+  _col.copy(FLOW_BASE);
+  if(tailFrac<0.45) _col.lerp(FLOW_HEAD, (0.45-tailFrac)*0.85);   // 先頭を白寄りに
+  _col.multiplyScalar(bright);
+  col[o]=_col.r; col[o+1]=_col.g; col[o+2]=_col.b;
+}
 function updateFlow(dt){
   if(!flow) return;
-  const flowSpeed=0.6 + 0.7*Math.min(1, P.h/300);   // 風が強いほど速く流れる
-  const {mesh, streams, pSL, pU, perSL}=flow;
-  const total=streams.length*perSL;
-  for(let i=0;i<total;i++){
-    const s=streams[pSL[i]], pts=s.pts;
-    let u=pU[i] + dt*flowSpeed/s.len; u-=Math.floor(u); pU[i]=u;
-    const f=u*(pts.length-1); let ia=Math.floor(f); if(ia>=pts.length-1) ia=pts.length-2;
-    const pa=pts[ia], pb=pts[ia+1], fr=f-ia;
-    _v0.lerpVectors(pa,pb,fr);
-    _dir.subVectors(pb,pa);
-    if(_dir.lengthSq()<1e-12) _dir.set(1,0,0); else _dir.normalize();
-    _obj.position.copy(_v0); _obj.quaternion.setFromUnitVectors(_UP,_dir); _obj.scale.set(1,1,1); _obj.updateMatrix();
-    mesh.setMatrixAt(i, _obj.matrix);
-    const ff=smooth(0,0.08,u)*(1-smooth(0.9,1,u));   // 始端・終端でフェード
-    _col.copy(FLOW_BASE).multiplyScalar(0.1+0.9*ff);
-    mesh.setColorAt(i, _col);
+  const {streams, sStream, sU, TAIL, gLen, posAttr, colAttr}=flow;
+  const flowSpeed=0.45 + 0.95*Math.min(1, P.h/300);   // 風が強いほど速く流れる
+  const pos=posAttr.array, col=colAttr.array, n=sStream.length;
+  for(let i=0;i<n;i++){
+    const s=streams[sStream[i]], pts=s.pts, np=pts.length;
+    let u=sU[i] + dt*flowSpeed/s.len; u-=Math.floor(u); sU[i]=u;
+    const gf=smooth(0,0.05,u)*(1-smooth(0.92,1,u));    // 始端・終端で筋全体をフェード
+    const base=i*TAIL*2*3;
+    for(let kk=0;kk<TAIL;kk++){
+      const uA=u-gLen*(kk/TAIL), uB=u-gLen*((kk+1)/TAIL);   // 先頭(kk=0) → 尾
+      sampleAt(pts,np,uA,_pa); sampleAt(pts,np,uB,_pb);
+      const o=base+kk*2*3;
+      pos[o]=_pa.x; pos[o+1]=_pa.y; pos[o+2]=_pa.z;
+      pos[o+3]=_pb.x; pos[o+4]=_pb.y; pos[o+5]=_pb.z;
+      const fA=kk/TAIL, fB=(kk+1)/TAIL;
+      writeCol(col, o,   Math.pow(1-fA,0.9)*gf, fA);   // 先頭ほど明るく、尾は暗く
+      writeCol(col, o+3, Math.pow(1-fB,0.9)*gf, fB);
+    }
   }
-  mesh.instanceMatrix.needsUpdate=true;
-  if(mesh.instanceColor) mesh.instanceColor.needsUpdate=true;
+  posAttr.needsUpdate=true; colAttr.needsUpdate=true;
 }
 
 function buildModel(resetTemps){
